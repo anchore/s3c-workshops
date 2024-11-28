@@ -57,7 +57,7 @@ docker pull docker.io/anchore/demo:enterprise-ui-s3c-demo-5.6
 ```
 Run docker compose and spin up Anchore Enterprise
 ```bash
-docker compose -f deployment/anchore-compose.yaml up -d
+docker compose -f assets/anchore-compose.yaml up -d
 ```
 
 Point your browser at the Anchore Enterprise UI by directing it to http://localhost:3000/ and use credentials:
@@ -75,7 +75,7 @@ Point your browser at the Anchore Enterprise UI by directing it to http://localh
 
 Ensure the setup script is executable, then run the setup script. Please note this will utilize the current active cluster context.
 ```bash
-cd ./deployment
+cd ./assets
 chmod +x setup.sh
 ./setup.sh
 ```
@@ -182,7 +182,7 @@ If you do however, need to spin down resources, please check out the steps below
 
 **Compose**
 ```bash
-docker compose -f deployment/anchore-compose.yaml down
+docker compose -f assets/anchore-compose.yaml down
 ```
 **Kubernetes**
 ```bash
