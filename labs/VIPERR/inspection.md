@@ -336,4 +336,4 @@ Oh, dear... it looks like this image has some malware baked in. We better not de
 
 ## Next Lab
 
-Next: [Policy Enforcement](policy-enforcement)
+Next: [Policy Enforcement](policy-enforcement.md)

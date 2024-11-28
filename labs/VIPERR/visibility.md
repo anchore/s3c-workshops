@@ -374,4 +374,4 @@ We have seen how both Source and Image SBOMs can be generated and imported into 
 We also showed how these can be mapped to a construct we call application which helps you maintain provenance and history about your releases and the source and containers associated with them.
 In future labs, we will unpack more ways in which you gain visibility into your container to help you achieve important tasks like remediation.
 
-Next: [Inspection](inspection)
+Next: [Inspection](inspection.md)

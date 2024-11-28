@@ -208,4 +208,4 @@ To learn more about deployment, configuration and usage please review the [integ
 
 ## Next Lab
 
-Next: [Remediation](remediation)
+Next: [Remediation](remediation.md)

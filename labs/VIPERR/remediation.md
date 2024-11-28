@@ -120,4 +120,4 @@ This raises a clear notification in the UI to help initiate the remediation work
 
 ## Next Lab
 
-Next: [Reporting](reporting)
+Next: [Reporting](reporting.md)
