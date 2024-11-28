@@ -220,7 +220,7 @@ anchorectl application artifact add base@v1.0.0 image <retrieved-image-sha>
 
 Now we add the v3.0.0 image that uses base:v1.0.0 as it's base image
 ```bash
-anchorectl application version add app@3.0.0
+anchorectl application version add app@v3.0.0
 cd ./examples/app:v3.0.0
 docker build . -t app:v3.0.0
 anchorectl image add app:v3.0.0 --from docker --dockerfile ./Dockerfile --force
