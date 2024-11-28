@@ -7,8 +7,8 @@ Working installations of Anchorectl and Anchore Enterprise are required to compl
 ## Lab Modules
 This lab consists of five modules designed to teach you in detail about each component of the VIPERR framework:
 
-* [**V**isibility](labs/VIPERR/visibility.md): Building an accurate Software Bill of Materials (SBOM) from source
-* [**I**nspection](labs/VIPERR/inspection.md): Security checks inspecting for vulnerabilities, secrets, permissions, and malware
-* [**P**olicy **E**nforcement](labs/VIPERR/policy-enforcement.md): Enforce compliance with external and/or internal standards
-* [**R**emediation](labs/VIPERR/remediation.md): Recommendations and automation to resolve issues more quickly. Give the developer what they need to move fast.
-* [**R**eporting](labs/VIPERR/reporting.md): Report out timely information quickly at any step of the development process.
+* [**V**isibility](visibility.md): Building an accurate Software Bill of Materials (SBOM) from source
+* [**I**nspection](inspection.md): Security checks inspecting for vulnerabilities, secrets, permissions, and malware
+* [**P**olicy **E**nforcement](policy-enforcement.md): Enforce compliance with external and/or internal standards
+* [**R**emediation](remediation.md): Recommendations and automation to resolve issues more quickly. Give the developer what they need to move fast.
+* [**R**eporting](reporting.md): Report out timely information quickly at any step of the development process.
