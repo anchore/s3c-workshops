@@ -1,11 +1,16 @@
-# Prerequisites
+## Overview
+In this lab you will learn how to deploy Anchore Enterprise into an environment of your choice.
+
+## Prerequisites
 
 Working installations of Anchorectl and Anchore Enterprise are required to complete the remaining labs in this workshop. 
 The following steps, will get both set up and configured Anchore Enterprise deployment
 
+> _The deployment in this tutorial is not production ready, and will receive limited support from Anchore, but don't let that stop you from learning!_
+
 ## Clone this Repo
 
-Download the contents of this repository, you will require the files in both the `deployment` and `examples` directories. 
+Download the contents of this repository, you will require the files in this README and the `assets` directories. 
 
 If it works better for you, you can follow the labs via docs on GitHub.
 
@@ -14,7 +19,7 @@ If it works better for you, you can follow the labs via docs on GitHub.
 You will require an Anchore Enterprise license and set of credentials to pull the images for this demo.
 
 To obtain the required licence and credentials instantly, please fill out this [form](https://forms.gle/NMhpVU19SuXRnLhC9).
- - Download the relevant files for your deployment into the `./deployment` folder.
+ - Download the relevant files for your deployment into the `./assets` folder.
 
 ## Deploy Anchore Enterprise
 
@@ -163,4 +168,25 @@ Compiler:           gc
 
 > You can permanently install and configure `anchorectl` removing the need for setting environment variables, see [Installing AnchoreCTL](https://docs.anchore.com/current/docs/deployment/anchorectl/).
 
-Next: [Visibility](02-visibility.md)
+## Cleanup
+
+If you would like, please continue testing Anchore Enterprise, you can easily add your own source, images and other integrations (such as CI/CD, SSO and more).
+It's a great way to kick the tyres a little further and examine what the results and workflows could look like for you.
+
+- See some examples of CI/CD integrations - https://docs.anchore.com/current/docs/integration/ci_cd/
+- Learn about SSO support - https://docs.anchore.com/current/docs/configuration/sso/ and context switching https://docs.anchore.com/current/docs/configuration/accounts/
+
+If you do however, need to spin down resources, please check out the steps below.
+
+### Spin down your Anchore deployment
+
+**Compose**
+```bash
+docker compose -f deployment/anchore-compose.yaml down
+```
+**Kubernetes**
+```bash
+helm uninstall anchore
+```
+**AWS Free Trial**
+Please follow the instructions you have received via email.

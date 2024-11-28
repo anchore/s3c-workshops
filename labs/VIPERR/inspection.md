@@ -88,7 +88,7 @@ Keeping Anchore fresh with relevant data is one of the key tenants of the produc
 > [!TIP]
 > We can also see this feed information in the Web UI under `system` when logged in as Admin.
 
-## Inspection of vulnerabilities
+### Inspection of vulnerabilities
 
 During the analysis of container images, Anchore Enterprise performs deep inspection, collecting data on all artifacts in the image including files, operating system packages and software artifacts such as Ruby GEMs and Node.JS NPM modules.
 
@@ -209,7 +209,7 @@ Let's start by adding our base image, which is named 'base' with no originality 
 ```bash
 anchorectl application add base --description "Webinar Demo Base Image"
 anchorectl application version add base@v1.0.0
-cd ./examples/base:v1.0.0
+cd ./assets/base:v1.0.0
 docker build . -t base:v1.0.0
 anchorectl image add base:v1.0.0 --from docker 
 ```
@@ -221,7 +221,7 @@ anchorectl application artifact add base@v1.0.0 image <retrieved-image-sha>
 Now we add the v3.0.0 image that uses base:v1.0.0 as it's base image
 ```bash
 anchorectl application version add app@v3.0.0
-cd ./examples/app:v3.0.0
+cd ./assets/app:v3.0.0
 docker build . -t app:v3.0.0
 anchorectl image add app:v3.0.0 --from docker --dockerfile ./Dockerfile --force
 ```
@@ -249,7 +249,7 @@ Helping you focus on the application containers issues and avoid the wider noise
 
 > Learn more about [base images](https://docs.anchore.com/current/docs/overview/concepts/images/base_images/)
 
-## Inspection of secrets, retrieved files, file content and malware
+### Inspection of secrets, retrieved files, file content and malware
 
 You can configure Anchore to scan for secrets (like AWS_ACCESS_KEY for example) as well as files and/or content in files that perhaps you might want to block from your containers.
 In addition, you can also scan a container for malware to catch situations where a binary with questionable provenance could make it into your pipeline (for example a cyptominer).
@@ -272,7 +272,7 @@ Secret Search:
 ├────────────────┼─────────────────────────────────────────────────────────────┼────────────┤
 │ PRIV_KEY       │ /usr/bin/ssh-add                                            │ 335        │
 │ PRIV_KEY       │ /usr/bin/ssh-keygen                                         │ 631        │
-│ PRIV_KEY       │ /usr/share/doc/perl-Net-SSLeay/examples/server_key.pem      │ 0          │
+│ PRIV_KEY       │ /usr/share/doc/perl-Net-SSLeay/assets/server_key.pem      │ 0          │
 │ PRIV_KEY       │ /usr/share/doc/perl-IO-Socket-SSL/example/simulate_proxy.pl │ 292        │
 │ PRIV_KEY       │ /usr/bin/ssh                                                │ 1475       │
 │ AWS_ACCESS_KEY │ /aws_access                                                 │ 0          │
@@ -336,4 +336,4 @@ Oh, dear... it looks like this image has some malware baked in. We better not de
 
 ## Next Lab
 
-Next: [Policy Enforcement](04-policy-enforcement.md)
+Next: [Policy Enforcement](policy-enforcement)

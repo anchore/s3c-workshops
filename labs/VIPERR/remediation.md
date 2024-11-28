@@ -52,7 +52,7 @@ TODO: Add an inner loop steps on remediation and update go.mod with newer packag
 The team have decided to release this latest code with all the vulnerabilities removed (true at the time of writing)
 ```bash
 anchorectl application version add app@v4.0.0
-cd ./examples/app:v4.0.0
+cd ./assets/app:v4.0.0
 docker build . -t app:v4.0.0
 anchorectl image add app:v4.0.0 --from docker --dockerfile ./Dockerfile --force
 ```
@@ -120,4 +120,4 @@ This raises a clear notification in the UI to help initiate the remediation work
 
 ## Next Lab
 
-Next: [Reporting](06-reporting.md)
+Next: [Reporting](reporting)

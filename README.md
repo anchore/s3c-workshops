@@ -1,14 +1,12 @@
 # Software Security in the Real World
 
-This tutorial steps you through deploying Anchore Enterprise (version 5.6.2) and a series of labs showcasing how you can use Anchore Enterprise to improve security across your software supply chain.
-
-> _The deployment in this tutorial is not production ready, and will receive limited support from Anchore, but don't let that stop you from learning!_
+This repo offers step-by-step guidance that take you from deploying Anchore Enterprise (version 5.6.2) to a series of specific labs, showcasing how you can utilize Anchore Enterprise to improve security across your software supply chain.
 
 ## Target Audience
 
-This repo and labs are for anyone who wants to understand how to improve security across their SDLC and software estate.
-We help you set up and deploy Anchore Enterprise to an environment of choice, from Docker Compose to Kubernetes. 
-Once you have a running deployment, we provide you with some repeatable examples (with only basic knowledge of containers and software required) across a series of themed labs.
+Anyone who wants to understand how they can improve security across their SDLC using Anchore Enterprise.
+This repository will get you a running Anchore Enterprise deployment in either a Docker Compose to Kubernetes. 
+After you have a successful deployment, just pick an interesting lab, and we take you through a guided tour with step-by-step instructions.
 
 ## Use cases
 
@@ -32,16 +30,15 @@ Anchore Enterprise is a flexible platform that can be utilized in many ways, her
 
 ## Labs
 
-After initial setup in prerequisites, each lab guides you through tried and tested examples across use cases from software visibility to reporting and remediation.  
+Each lab below steps you through tried and tested examples across many use cases.  
 
-* [Prerequisites](docs/01-prerequisites.md)
-* [Visibility](docs/02-visibility.md)
-* [Inspection](docs/03-inspection.md)
-* [Policy Enforcement](docs/04-policy-enforcement.md)
-* [Remediation](docs/05-remediation.md)
-* [Reporting](docs/06-reporting.md)
-* [Cleaning Up](docs/07-cleanup.md)
+* [Deployment](docs/Deployment/README.md) - Get Anchore Enterprise Running (the first step before continuing to other labs)
+* [VIPERR](docs/VIPERR/README.md) - **V**isibility, **I**nspection, **P**olicy **E**nforcement, **R**emediation, **R**eporting
 
-## Getting Started 
+## Learn More
 
-[Your Anchore journey starts here](docs/01-prerequisites.md)
+Anchore supports many use cases, configurations and environments, please check out the Anchore Docs, wider resources, or get in touch directly to learn more.
+
+- [Anchore Enterprise Docs](https://docs.anchore.com/current/docs/)
+- [Anchore Resources](https://anchore.com/resources/)
+- [Get in touch](https://get.anchore.com/contact/)

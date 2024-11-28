@@ -31,7 +31,7 @@ Let's now unpack how you can create, track and manage those SBOMs within Anchore
 Let's change into the directory containing the code that our dev team have just produced.
 Do check out what's in this amazing Go application...
 ```bash
-cd ./examples/app
+cd ./assets/app
 ```
 Create a new Anchore application, with which we can associate source code and containers.
 ```bash
@@ -69,7 +69,7 @@ In fact, they could automate this, by adding these steps into their pipeline scr
 The dev team has been working hard over a long sprint to add "Docker support"! 
 First let's look at these changes to the app
 ```bash
-cd ./examples/app:v1.0.0
+cd ./assets/app:v1.0.0
 ```
 As we did before, let's create a new release called v1.0.0 for the 'app' in Anchore.
 ```bash
@@ -299,7 +299,7 @@ We can achieve this by adding a hints json file that contains the metadata Ancho
 
 Let's first "check and submit" the source code as v2.0.0. Then we move onto building an image, and look at the hints process.
 ```bash
-cd ./examples/app:v2.0.0
+cd ./assets/app:v2.0.0
 anchorectl source add github.com/anchore/webinar-demo@106c2d9fffe01f564d889763d904cace7f32be3f --branch 'v2.0.0' --author 'author-from-ci@example.com' --application 'app@v2.0.0' --workflow-name 'default' --from -
 ```
 
@@ -374,4 +374,4 @@ We have seen how both Source and Image SBOMs can be generated and imported into 
 We also showed how these can be mapped to a construct we call application which helps you maintain provenance and history about your releases and the source and containers associated with them.
 In future labs, we will unpack more ways in which you gain visibility into your container to help you achieve important tasks like remediation.
 
-Next: [Inspection](03-inspection.md)
+Next: [Inspection](inspection)

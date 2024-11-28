@@ -41,7 +41,3 @@ Here are some objectives to try yourself:
 - Build a scheduled report that will run daily.
 
 Please review the docs for extra details and examples to guide you https://docs.anchore.com/current/docs/vulnerability_management/reports/
-
-## Next Lab
-
-Next: [Clean Up](07-cleanup.md)
