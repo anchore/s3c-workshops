@@ -1,3 +1,9 @@
+useExistingSecrets: true
+existingSecretName: anchore-enterprise-env
+
+postgresql:
+  chartEnabled: true
+  externalEndpoint: "anchore-postgresql"
 anchoreConfig:
   policy_engine:
     vulnerabilities:

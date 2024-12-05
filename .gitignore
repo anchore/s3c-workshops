@@ -1,3 +1,3 @@
-labs/Deployment/assets/demo-secrets.yaml
-labs/Deployment/assets/license.yaml
-labs/Deployment/assets/docker-config.json
+labs/Deployment/demo-secrets.yaml
+labs/Deployment/license.yaml
+labs/Deployment/docker-config.json

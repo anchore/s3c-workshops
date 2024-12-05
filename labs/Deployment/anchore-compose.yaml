@@ -51,7 +51,7 @@ services:
       - ANCHORE_ENDPOINT_HOSTNAME=catalog
       - ANCHORE_DB_HOST=anchore-db
       - ANCHORE_DB_PASSWORD=mysecretpassword
-      - ANCHORE_ADMIN_PASSWORD=anchore12345!
+      - ANCHORE_ADMIN_PASSWORD=anchore12345
       - ANCHORE_LOG_LEVEL=INFO
       - ANCHORE_CATALOG_NOTIFICATION_INTERVAL_SEC=0
       - ANCHORE_OAUTH_ENABLED=true
@@ -75,7 +75,7 @@ services:
       - ANCHORE_ENDPOINT_HOSTNAME=queue
       - ANCHORE_DB_HOST=anchore-db
       - ANCHORE_DB_PASSWORD=mysecretpassword
-      - ANCHORE_ADMIN_PASSWORD=anchore12345!
+      - ANCHORE_ADMIN_PASSWORD=anchore12345
       - ANCHORE_LOG_LEVEL=INFO
       - ANCHORE_OAUTH_ENABLED=true
       - ANCHORE_AUTH_ENABLE_HASHED_PASSWORDS=true
@@ -261,7 +261,7 @@ services:
   ui:
     image: docker.io/anchore/enterprise-ui:v5.12.0
     volumes:
-      - ../license.yaml:/license.yaml:ro
+      - ./license.yaml:/license.yaml:ro
     depends_on:
       api:
         condition: service_healthy

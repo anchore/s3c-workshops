@@ -7,11 +7,9 @@ _**The deployment in this tutorial is not production ready, and will receive lim
 
 ## Deploy Anchore Enterprise
 
-Let's start by downloading the license and required assets
-1. Download all the files in the labs `assets` directory
-2. Retrieve your license file and Anchore Dockerhub login credentials
-   1. To obtain these, please fill out this [form](https://forms.gle/NMhpVU19SuXRnLhC9). 
-   2. Alternatively you might already have these.
+1. Download all the files in the labs `Deployment` directory.
+2. Retrieve a license file and set of Anchore Dockerhub login credentials.
+   1. To obtain these, please fill out this [form](https://forms.gle/NMhpVU19SuXRnLhC9).
 3. Choose your deployment target from a choice of three:
    1. [Docker Compose](#docker-compose)
    2. [Kubernetes](#kubernetes)
@@ -32,11 +30,11 @@ docker login --username <your-docker-username> # followed by <your-docker-passwo
 ```
 Run docker compose and spin up Anchore Enterprise
 ```bash
-docker compose -f assets/anchore-compose.yaml up -d
+docker compose -f anchore-compose.yaml up -d
 ```
 Now point your browser at the Anchore Enterprise UI by directing it to http://localhost:3000/ and use admin credentials:
 - username: `admin`
-- password: `anchore12345!`
+- password: `anchore12345`
 
 ### Kubernetes
 
@@ -49,38 +47,38 @@ Now point your browser at the Anchore Enterprise UI by directing it to http://lo
 
 Store your License, DockerHub and Anchore Credentials as Kubernetes Secrets which is then, used by your Anchore Deployment.
 ```bash
-kubectl create namespace anchore-demo
+kubectl create namespace anchore
 kubectl create secret generic anchore-enterprise-license \
---from-file=license.yaml=./license.yaml -n anchore-demo
+--from-file=license.yaml=./license.yaml -n anchore
 kubectl create secret docker-registry anchore-enterprise-pullcreds \
---docker-server=docker.io --docker-username=<your-docker-username> --docker-password=<your-docker-password> -n anchore-demo
+--docker-server=docker.io --docker-username=<your-docker-username> --docker-password=<your-docker-password> -n anchore
 kubectl create secret generic anchore-enterprise-env \
 --from-literal=ANCHORE_DB_HOST=anchore-postgresql --from-literal=ANCHORE_DB_NAME=anchore \
 --from-literal=ANCHORE_DB_USER=anchore --from-literal=ANCHORE_DB_PORT=5432 \
---from-literal=ANCHORE_DB_PASSWORD=mysecretpassword  --from-literal=ANCHORE_ADMIN_PASSWORD=anchore12345! -n anchore-demo
+--from-literal=ANCHORE_DB_PASSWORD=anchore-postgres,123 --from-literal=ANCHORE_ADMIN_PASSWORD=anchore12345 -n anchore
 kubectl create secret generic anchore-enterprise-ui-env \
---from-literal=ANCHORE_APPDB_URI=postgres://anchore:mysecretpassword@anchore-postgresql:5432/anchore \
---from-literal=ANCHORE_REDIS_URI=redis://:anchore-redis,123@anchore-ui-redis-master:6379 -n anchore-demo
-```
-
-The Anchore UI can be accessed via localhost:8080 with kubernetes port-forwarding:
-```bash
-kubectl port-forward svc/anchore-demo-enterprise-ui -n anchore-demo 8080:80
-```
-The Anchore API can be accessed via localhost:8228 with kubernetes port-forwarding:
-```bash
-kubectl port-forward svc/anchore-demo-enterprise-api -n anchore-demo 8228:8228
+--from-literal=ANCHORE_APPDB_URI=postgres://anchore:anchore-postgres,123@anchore-postgresql:5432/anchore \
+--from-literal=ANCHORE_REDIS_URI=redis://:anchore-redis,123@anchore-ui-redis-master:6379 -n anchore
 ```
 
 Run Helm and spin up Anchore Enterprise
 ```bash
 helm repo add anchore https://charts.anchore.io
-helm install -n anchore-demo anchore-demo anchore/enterprise -f values.yaml --namespace anchore-demo --version 3.2.0 # 5.12.0
+helm install -n anchore anchore anchore/enterprise -f values.yaml --version 3.2.0 # 5.12.0
+```
+
+The Anchore UI can be accessed via http://localhost:8080 with kubernetes port-forwarding:
+```bash
+kubectl port-forward svc/anchore-enterprise-ui -n anchore 8080:80
+```
+The Anchore API can be accessed via localhost:8228 with kubernetes port-forwarding:
+```bash
+kubectl port-forward svc/anchore-enterprise-api -n anchore 8228:8228
 ```
 
 Now point your browser at the Anchore Enterprise UI by directing it to http://localhost:8080/ and use admin credentials:
 - username: `admin`
-- password: `anchore12345!`
+- password: `anchore12345`
 
 ### AWS Anchore Free Trial
 
@@ -88,7 +86,6 @@ Now point your browser at the Anchore Enterprise UI by directing it to http://lo
 - An AWS account with the ability to launch an AMI/CF instance in us-west-1, us-east-1, or us-east-2.
   - Running the Anchore trail will incur AWS Compute and other infrastructure costs.
 - Fill out this form [Anchore Free Trial](https://get.anchore.com/free-trial/)
-
 
 #### Setup
 
@@ -109,25 +106,30 @@ Create the AnchoreCTL environment variables
 ```bash
 export ANCHORECTL_URL="http://localhost:8228"
 export ANCHORECTL_USERNAME="admin"
-export ANCHORECTL_PASSWORD="anchore12345!" 
+export ANCHORECTL_PASSWORD="anchore12345" 
 ```
 _You can permanently install and configure `anchorectl` removing the need for setting environment variables, see [Installing AnchoreCTL](https://docs.anchore.com/current/docs/deployment/anchorectl/)._
 
 Test your AnchoreCTL and Anchore Enterprise deployment
 ```bash
-anchorectl system smoke-tests run
+anchorectl system status
 ```
 ```bash
 # Your output should look something like the following with 'PASS' for all rows:
-┌───────────────────────────────────────┬─────────────────────────────────────────────────┬────────┬────────┐
-│ NAME                                  │ DESCRIPTION                                     │ RESULT │ STDERR │
-├───────────────────────────────────────┼─────────────────────────────────────────────────┼────────┼────────┤
-│ wait-for-system                       │ Wait for the system to be ready                 │ pass   │        │
-│ check-admin-credentials               │ Check anchorectl credentials to run smoke tests │ pass   │        │
-│ create-test-account                   │ Create a test account                           │ pass   │        │
-│ list-test-policies                    │ List the test policies                          │ pass   │        │
-.............................................................................................................
-└───────────────────────────────────────┴─────────────────────────────────────────────────┴────────┴────────┘
+ ✔ Status system                                                                                                                                                                                                                                  
+┌────────────────┬───────────────────────────────────────────────────┬────────────────────────────────────────────────────────────────────────┬──────┬────────────────┬────────────┬──────────────┐
+│ SERVICE        │ HOST ID                                           │ URL                                                                    │ UP   │ STATUS MESSAGE │ DB VERSION │ CODE VERSION │
+├────────────────┼───────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────┼──────┼────────────────┼────────────┼──────────────┤
+│ analyzer       │ anchore-enterprise-analyzer-5577b69bb7-bpvnw      │ http://anchore-enterprise-analyzer.anchore.svc.cluster.local:8084      │ true │ available      │ 5120       │ 5.12.0       │
+│ notifications  │ anchore-enterprise-notifications-55c66f7c88-82k4t │ http://anchore-enterprise-notifications.anchore.svc.cluster.local:8668 │ true │ available      │ 5120       │ 5.12.0       │
+│ simplequeue    │ anchore-enterprise-simplequeue-5c5b46466c-xq6kq   │ http://anchore-enterprise-simplequeue.anchore.svc.cluster.local:8083   │ true │ available      │ 5120       │ 5.12.0       │
+│ reports_worker │ anchore-enterprise-reportsworker-6fb4f55455-gggtf │ http://anchore-enterprise-reportsworker.anchore.svc.cluster.local:8559 │ true │ available      │ 5120       │ 5.12.0       │
+│ apiext         │ anchore-enterprise-api-5ccff5fdd-gcwkh            │ http://anchore-enterprise-api.anchore.svc.cluster.local:8228           │ true │ available      │ 5120       │ 5.12.0       │
+│ policy_engine  │ anchore-enterprise-policy-8d4bb4c45-7lc9r         │ http://anchore-enterprise-policy.anchore.svc.cluster.local:8087        │ true │ available      │ 5120       │ 5.12.0       │
+│ catalog        │ anchore-enterprise-catalog-86c6978bbf-89hg7       │ http://anchore-enterprise-catalog.anchore.svc.cluster.local:8082       │ true │ available      │ 5120       │ 5.12.0       │
+│ data_syncer    │ anchore-enterprise-datasyncer-64f7f7fcb9-m5tkf    │ http://anchore-enterprise-datasyncer.anchore.svc.cluster.local:8778    │ true │ available      │ 5120       │ 5.12.0       │
+│ reports        │ anchore-enterprise-reports-7b6497fffc-msd7x       │ http://anchore-enterprise-reports.anchore.svc.cluster.local:8558       │ true │ available      │ 5120       │ 5.12.0       │
+└────────────────┴───────────────────────────────────────────────────┴────────────────────────────────────────────────────────────────────────┴──────┴────────────────┴────────────┴──────────────┘
 ```
 
 ## Cleanup
@@ -143,7 +145,7 @@ sudo rm /usr/local/bin/anchorectl
 ```
 **Compose**
 ```bash
-docker compose -f assets/anchore-compose.yaml down
+docker compose -f anchore-compose.yaml down
 ```
 **Kubernetes**
 ```bash
