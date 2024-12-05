@@ -1,23 +1,22 @@
-# All-in-one docker-compose deployment of a full anchore-enterprise service system
+# All-in-one docker compose deployment of a full anchore-enterprise service system
 ---
-version: "2.1"
-name: "anchore-demo-560"
+name: "anchore-demo"
 volumes:
-  # Since this is for a quickstart, each minor version has its own db, to use a previous db and upgrade, change this to the db volume name you want to upgrade. e.g. "anchore-enterprise-4.2-db" if upgrading from a 4.2 quickstart deployment.
-  anchore-enterprise-5.6-db:
+  # Since this is for a quickstart, each minor version has its own db, to use a previous db and upgrade, change this to the db volume name you want to upgrade. e.g. "anchore-enterprise-5.9-db" if upgrading from a 5.9 quickstart deployment.
+  anchore-enterprise-db:
     # Set this to 'true' to use an external volume. In which case, it must be created manually with "docker volume create anchore-db-volume"
     external: false
 
 services:
-  # The primary API endpoint service
   api:
-    image: docker.io/anchore/demo:enterprise-s3c-demo-5.6
+    image: docker.io/anchore/enterprise:v5.12.0
     depends_on:
-      - anchore-db
-      - catalog
+      anchore-db:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
     volumes:
       - ./license.yaml:/license.yaml:ro
-      #- ./config-engine.yaml:/config/config.yaml:z
     ports:
       - "8228:8228"
     logging:
@@ -28,22 +27,20 @@ services:
       - ANCHORE_ENDPOINT_HOSTNAME=api
       - ANCHORE_DB_HOST=anchore-db
       - ANCHORE_DB_PASSWORD=mysecretpassword
-      - ANCHORE_ADMIN_PASSWORD=foobar
-      - ANCHORE_AUTHZ_HANDLER=external
-      - ANCHORE_ENABLE_METRICS=false
       - ANCHORE_LOG_LEVEL=INFO
       - ANCHORE_OAUTH_ENABLED=true
       - ANCHORE_AUTH_ENABLE_HASHED_PASSWORDS=true
       - ANCHORE_AUTH_SECRET=supersharedsecret
     command: ["anchore-enterprise-manager", "service", "start", "apiext"]
-  # Catalog is the primary persistence and state manager of the system
   catalog:
-    image: docker.io/anchore/demo:enterprise-s3c-demo-5.6
+    image: docker.io/anchore/enterprise:v5.12.0
     depends_on:
-      - anchore-db
+      anchore-db:
+        condition: service_healthy
+      queue:
+        condition: service_healthy
     volumes:
       - ./license.yaml:/license.yaml:ro
-      #- ./config.yaml:/config/config.yaml:z
     logging:
       driver: "json-file"
       options:
@@ -54,8 +51,7 @@ services:
       - ANCHORE_ENDPOINT_HOSTNAME=catalog
       - ANCHORE_DB_HOST=anchore-db
       - ANCHORE_DB_PASSWORD=mysecretpassword
-      - ANCHORE_ADMIN_PASSWORD=foobar
-      - ANCHORE_ENABLE_METRICS=false
+      - ANCHORE_ADMIN_PASSWORD=anchore12345!
       - ANCHORE_LOG_LEVEL=INFO
       - ANCHORE_CATALOG_NOTIFICATION_INTERVAL_SEC=0
       - ANCHORE_OAUTH_ENABLED=true
@@ -63,13 +59,12 @@ services:
       - ANCHORE_AUTH_SECRET=supersharedsecret
     command: ["anchore-enterprise-manager", "service", "start", "catalog"]
   queue:
-    image: docker.io/anchore/demo:enterprise-s3c-demo-5.6
+    image: docker.io/anchore/enterprise:v5.12.0
     depends_on:
-      - anchore-db
-      - catalog
+      anchore-db:
+        condition: service_healthy
     volumes:
       - ./license.yaml:/license.yaml:ro
-      #- ./config-engine.yaml:/config/config.yaml:z
     expose:
       - 8228
     logging:
@@ -80,21 +75,23 @@ services:
       - ANCHORE_ENDPOINT_HOSTNAME=queue
       - ANCHORE_DB_HOST=anchore-db
       - ANCHORE_DB_PASSWORD=mysecretpassword
-      - ANCHORE_ADMIN_PASSWORD=foobar
-      - ANCHORE_ENABLE_METRICS=false
+      - ANCHORE_ADMIN_PASSWORD=anchore12345!
       - ANCHORE_LOG_LEVEL=INFO
       - ANCHORE_OAUTH_ENABLED=true
       - ANCHORE_AUTH_ENABLE_HASHED_PASSWORDS=true
       - ANCHORE_AUTH_SECRET=supersharedsecret
     command: ["anchore-enterprise-manager", "service", "start", "simplequeue"]
   policy-engine:
-    image: docker.io/anchore/demo:enterprise-s3c-demo-5.6
+    image: docker.io/anchore/enterprise:v5.12.0
     depends_on:
-      - anchore-db
-      - catalog
+      anchore-db:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
+      data-syncer:
+        condition: service_healthy
     volumes:
       - ./license.yaml:/license.yaml:ro
-      #- ./config-engine.yaml:/config/config.yaml:z
     expose:
       - 8228
     logging:
@@ -105,39 +102,18 @@ services:
       - ANCHORE_ENDPOINT_HOSTNAME=policy-engine
       - ANCHORE_DB_HOST=anchore-db
       - ANCHORE_DB_PASSWORD=mysecretpassword
-      - ANCHORE_ADMIN_PASSWORD=foobar
-      - ANCHORE_ENABLE_METRICS=false
       - ANCHORE_LOG_LEVEL=INFO
       - ANCHORE_OAUTH_ENABLED=true
       - ANCHORE_AUTH_ENABLE_HASHED_PASSWORDS=true
       - ANCHORE_AUTH_SECRET=supersharedsecret
-      # To use on-prem feed service with grype, uncomment ANCHORE_GRYPE_DB_URL. In addition, uncomment the enterprise-feeds-db and feeds services at the end of this file
-      # - ANCHORE_GRYPE_DB_URL=http://feeds:8228/v2/databases/grypedb
-      # To use on-prem feed service, uncomment the following ANCHORE_FEEDS_* environment variables. In addition, uncomment the enterprise-feeds-db and feeds services at the end of this file
-      #- ANCHORE_FEEDS_URL=http://feeds:8228/v2/feeds
-      # Uncomment the next variable in addition to enabling the on-prem feed service just above, to enable syncing of the MSRC data feeds for windows scanning support.
-      #- ANCHORE_FEEDS_MICROSOFT_ENABLED=true
-
-      # The following environment variables can be used to tune the system-level vulnerability matching settings and will apply to all vulnerability scans across all accounts.
-      # It is important to note that the github provider must be enabled in the feed service if search by cpe is disabled for any ecosystem or there will be no vulnerability matches at all for
-      # that ecosystem.  The below settings represent the current defaults if nothing else is specified.  Searching by CPE is enabled for all configurable ecosystems except for javascript.
-      # - ANCHORE_VULN_MATCHING_DEFAULT_SEARCH_BY_CPE_ENABLED=${ANCHORE_VULN_MATCHING_DEFAULT_SEARCH_BY_CPE_ENABLED:-true}
-      # - ANCHORE_VULN_MATCHING_ECOSYSTEM_SPECIFIC_DOTNET_SEARCH_BY_CPE_ENABLED=${ANCHORE_VULN_MATCHING_ECOSYSTEM_SPECIFIC_DOTNET_SEARCH_BY_CPE_ENABLED:-ANCHORE_VULN_MATCHING_DEFAULT_SEARCH_BY_CPE_ENABLED:-true}
-      # - ANCHORE_VULN_MATCHING_ECOSYSTEM_SPECIFIC_GOLANG_SEARCH_BY_CPE_ENABLED=${ANCHORE_VULN_MATCHING_ECOSYSTEM_SPECIFIC_GOLANG_SEARCH_BY_CPE_ENABLED:-ANCHORE_VULN_MATCHING_DEFAULT_SEARCH_BY_CPE_ENABLED:-true}
-      # - ANCHORE_VULN_MATCHING_ECOSYSTEM_SPECIFIC_JAVA_SEARCH_BY_CPE_ENABLED=${ANCHORE_VULN_MATCHING_ECOSYSTEM_SPECIFIC_JAVA_SEARCH_BY_CPE_ENABLED:-ANCHORE_VULN_MATCHING_DEFAULT_SEARCH_BY_CPE_ENABLED:-true}
-      # - ANCHORE_VULN_MATCHING_ECOSYSTEM_SPECIFIC_JAVASCRIPT_SEARCH_BY_CPE_ENABLED=${ANCHORE_VULN_MATCHING_ECOSYSTEM_SPECIFIC_JAVASCRIPT_SEARCH_BY_CPE_ENABLED:-ANCHORE_VULN_MATCHING_DEFAULT_SEARCH_BY_CPE_ENABLED:-false}
-      # - ANCHORE_VULN_MATCHING_ECOSYSTEM_SPECIFIC_PYTHON_SEARCH_BY_CPE_ENABLED=${ANCHORE_VULN_MATCHING_ECOSYSTEM_SPECIFIC_PYTHON_SEARCH_BY_CPE_ENABLED:-ANCHORE_VULN_MATCHING_DEFAULT_SEARCH_BY_CPE_ENABLED:-true}
-      # - ANCHORE_VULN_MATCHING_ECOSYSTEM_SPECIFIC_RUBY_SEARCH_BY_CPE_ENABLED=${ANCHORE_VULN_MATCHING_ECOSYSTEM_SPECIFIC_RUBY_SEARCH_BY_CPE_ENABLED:-ANCHORE_VULN_MATCHING_DEFAULT_SEARCH_BY_CPE_ENABLED:-true}
-      # The `stock` matcher is the default catch-all ecosystem and it is *STRONGLY DISCOURAGED* to disable search by cpe for this ecosystem.  This will disable vulnerability matching for all 
-      # binaries that are not installed by a package manager (python interpreter, go tooling, ruby, etc)
-      # - ANCHORE_VULN_MATCHING_ECOSYSTEM_SPECIFIC_STOCK_SEARCH_BY_CPE_ENABLED=${ANCHORE_VULN_MATCHING_ECOSYSTEM_SPECIFIC_STOCK_SEARCH_BY_CPE_ENABLED:-ANCHORE_VULN_MATCHING_DEFAULT_SEARCH_BY_CPE_ENABLED:-true}
-
     command: ["anchore-enterprise-manager", "service", "start", "policy_engine"]
   analyzer:
-    image: docker.io/anchore/demo:enterprise-s3c-demo-5.6
+    image: docker.io/anchore/enterprise:v5.12.0
     depends_on:
-      - anchore-db
-      - catalog
+      anchore-db:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
     expose:
       - 8228
     logging:
@@ -148,8 +124,6 @@ services:
       - ANCHORE_ENDPOINT_HOSTNAME=analyzer
       - ANCHORE_DB_HOST=anchore-db
       - ANCHORE_DB_PASSWORD=mysecretpassword
-      - ANCHORE_ADMIN_PASSWORD=foobar
-      - ANCHORE_ENABLE_METRICS=false
       - ANCHORE_LOG_LEVEL=INFO
       - ANCHORE_OAUTH_ENABLED=true
       - ANCHORE_AUTH_ENABLE_HASHED_PASSWORDS=true
@@ -158,13 +132,13 @@ services:
     volumes:
       - ./license.yaml:/license.yaml:ro
       - /analysis_scratch
-      - ./config.yaml:/config/config.yaml:z
+      # To enable and configure malware and catalogers during centralized analysis/scans please review - https://docs.anchore.com/current/docs/configuration/malware.
       - ./analyzer_config.yaml:/anchore_service/analyzer_config.yaml:z
     command: ["anchore-enterprise-manager", "service", "start", "analyzer"]
   anchore-db:
     image: docker.io/library/postgres:13
     volumes:
-      - anchore-enterprise-5.6-db:/var/lib/postgresql/data
+      - anchore-enterprise-db:/var/lib/postgresql/data
     environment:
       - POSTGRES_PASSWORD=mysecretpassword
     expose:
@@ -176,13 +150,14 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
   reports:
-    image: docker.io/anchore/demo:enterprise-s3c-demo-5.6
+    image: docker.io/anchore/enterprise:v5.12.0
     volumes:
       - ./license.yaml:/license.yaml:ro
-      #- ./config-enterprise.yaml:/config/config.yaml:z
     depends_on:
-      - anchore-db
-      - catalog
+      anchore-db:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
     ports:
       - "8558:8228"
     logging:
@@ -193,22 +168,20 @@ services:
       - ANCHORE_ENDPOINT_HOSTNAME=reports
       - ANCHORE_DB_HOST=anchore-db
       - ANCHORE_DB_PASSWORD=mysecretpassword
-      - ANCHORE_ADMIN_PASSWORD=foobar
-      - ANCHORE_ENABLE_METRICS=false
-      - ANCHORE_AUTHZ_HANDLER=external
       - ANCHORE_LOG_LEVEL=INFO
       - ANCHORE_OAUTH_ENABLED=true
       - ANCHORE_AUTH_ENABLE_HASHED_PASSWORDS=true
       - ANCHORE_AUTH_SECRET=supersharedsecret
     command: ["anchore-enterprise-manager", "service", "start", "reports"]
   reports_worker:
-    image: docker.io/anchore/demo:enterprise-s3c-demo-5.6
+    image: docker.io/anchore/enterprise:v5.12.0
     volumes:
       - ./license.yaml:/license.yaml:ro
-      #- ./config-enterprise.yaml:/config/config.yaml:z
     depends_on:
-      - anchore-db
-      - catalog
+      anchore-db:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
     expose:
       - 8228
     logging:
@@ -219,8 +192,6 @@ services:
       - ANCHORE_ENDPOINT_HOSTNAME=reports_worker
       - ANCHORE_DB_HOST=anchore-db
       - ANCHORE_DB_PASSWORD=mysecretpassword
-      - ANCHORE_ADMIN_PASSWORD=foobar
-      - ANCHORE_ENABLE_METRICS=false
       - ANCHORE_LOG_LEVEL=INFO
       - ANCHORE_OAUTH_ENABLED=true
       - ANCHORE_AUTH_ENABLE_HASHED_PASSWORDS=true
@@ -228,13 +199,14 @@ services:
     command:
       ["anchore-enterprise-manager", "service", "start", "reports_worker"]
   notifications:
-    image: docker.io/anchore/demo:enterprise-s3c-demo-5.6
+    image: docker.io/anchore/enterprise:v5.12.0
     volumes:
       - ./license.yaml:/license.yaml:ro
-      #- ./config-enterprise.yaml:/config/config.yaml:z
     depends_on:
-      - anchore-db
-      - catalog
+      anchore-db:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
     ports:
       - "8668:8228"
     logging:
@@ -245,17 +217,39 @@ services:
       - ANCHORE_ENDPOINT_HOSTNAME=notifications
       - ANCHORE_DB_HOST=anchore-db
       - ANCHORE_DB_PASSWORD=mysecretpassword
-      - ANCHORE_ADMIN_PASSWORD=foobar
-      - ANCHORE_ENABLE_METRICS=false
-      - ANCHORE_AUTHZ_HANDLER=external
       - ANCHORE_LOG_LEVEL=INFO
       - ANCHORE_ENTERPRISE_UI_URL=http://localhost:3000
       - ANCHORE_OAUTH_ENABLED=true
       - ANCHORE_AUTH_ENABLE_HASHED_PASSWORDS=true
       - ANCHORE_AUTH_SECRET=supersharedsecret
     command: ["anchore-enterprise-manager", "service", "start", "notifications"]
+  data-syncer:
+    image: docker.io/anchore/enterprise:v5.12.0
+    volumes:
+      - ./license.yaml:/license.yaml:ro
+    depends_on:
+      anchore-db:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
+    ports:
+      - "8778:8228"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    environment:
+      - ANCHORE_ENDPOINT_HOSTNAME=data-syncer
+      - ANCHORE_DB_HOST=anchore-db
+      - ANCHORE_DB_PASSWORD=mysecretpassword
+      - ANCHORE_LOG_LEVEL=INFO
+      - ANCHORE_OAUTH_ENABLED=true
+      - ANCHORE_AUTH_SECRET=supersharedsecret
+      - ANCHORE_DATA_SYNC_AUTO_SYNC_ENABLED=true
+    command:
+      ["anchore-enterprise-manager", "service", "start", "data_syncer"]
   ui-redis:
-    image: docker.io/library/redis:4
+    image: docker.io/library/redis:7
     expose:
       - 6379
     logging:
@@ -265,14 +259,16 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "redis-cli PING"]
   ui:
-    image: docker.io/anchore/demo:enterprise-ui-s3c-demo-5.6
+    image: docker.io/anchore/enterprise-ui:v5.12.0
     volumes:
-      - ./license.yaml:/license.yaml:ro
-      #- ./config-ui.yaml:/config/config-ui.yaml:z
+      - ../license.yaml:/license.yaml:ro
     depends_on:
-      - api
-      - ui-redis
-      - anchore-db
+      api:
+        condition: service_healthy
+      ui-redis:
+        condition: service_healthy
+      anchore-db:
+        condition: service_healthy
     ports:
       - "3000:3000"
     logging:
@@ -283,4 +279,3 @@ services:
       - ANCHORE_ENTERPRISE_URI=http://api:8228/v2
       - ANCHORE_REDIS_URI=redis://ui-redis:6379
       - ANCHORE_APPDB_URI=postgres://postgres:mysecretpassword@anchore-db:5432/postgres
-      - ANCHORE_ENABLE_METRICS=false

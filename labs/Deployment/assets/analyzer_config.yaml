@@ -1,12 +1,9 @@
-# Anchore analyzer config file
-#
 retrieve_files:
   max_file_size_kb: 1000
   file_list:
     - '/etc/passwd'
     - '/etc/services'
     - '/etc/sudoers'
-
 secret_search:
   match_params:
     - MAXFILESIZE=10000
@@ -17,14 +14,6 @@ secret_search:
     - "PRIV_KEY=(?i)-+BEGIN(.*)PRIVATE KEY-+"
     - "DOCKER_AUTH=(?i).*\"auth\": *\".+\""
     - "API_KEY=(?i).*api(-|_)key( *=+ *).*(?<![A-Z0-9])[A-Z0-9]{20,60}(?![A-Z0-9]).*"
-
-## Uncomment content_search: {} to configure file content searching
-# content_search:
-#   match_params:
-#     - MAXFILESIZE=10000
-#   regexp_match:
-#     - "EXAMPLE_MATCH="
-
 malware:
   clamav:
     # Set this to true to enable the malware scan

@@ -1,39 +1,21 @@
 ## Overview
-In this lab you will learn how to deploy Anchore Enterprise into an environment of your choice.
+In this lab you will learn how to deploy Anchore Enterprise into an environment of your choice. 
+A stand-alone deployment requires at least 8GB of RAM and 40GB of Storage. For a smoother experience, we recommended 16 GB of RAM and 100 GB of storage.
+It may take a few minutes for Anchore Enterprise to spin up and for all services to be operational.
 
-## Prerequisites
-
-Working installations of Anchorectl and Anchore Enterprise are required to complete the remaining labs in this workshop. 
-The following steps, will get both set up and configured Anchore Enterprise deployment
-
-> _The deployment in this tutorial is not production ready, and will receive limited support from Anchore, but don't let that stop you from learning!_
-
-## Clone this Repo
-
-Download the contents of this repository, you will require the files in this README and the `assets` directories. 
-
-If it works better for you, you can follow the labs via docs on GitHub.
-
-## Get Access
-
-You will require an Anchore Enterprise license and set of credentials to pull the images for this demo.
-
-To obtain the required licence and credentials instantly, please fill out this [form](https://forms.gle/NMhpVU19SuXRnLhC9).
- - Download the relevant files for your deployment into the `./assets` folder.
+_**The deployment in this tutorial is not production ready, and will receive limited support from Anchore, but don't let that stop you from learning!**_
 
 ## Deploy Anchore Enterprise
 
-You can spin up an Anchore Enterprise Demo environment in three ways:
-  - Docker Compose
-  - Kubernetes
-  - AWS Anchore Free Trial
-
-Resources
-  - A stand-alone deployment to run through the labs requires at least 8GB of RAM and 40GB of Storage. 
-  - For smoother experience we recommended 16 GB of RAM and 100 GB of storage to support storage for 100’s of images. 
-
-> [!NOTE]
-> It may take a few minutes for Anchore to spin up and for all services to be operational.
+Let's start by downloading the license and required assets
+1. Download all the files in the labs `assets` directory
+2. Retrieve your license file and Anchore Dockerhub login credentials
+   1. To obtain these, please fill out this [form](https://forms.gle/NMhpVU19SuXRnLhC9). 
+   2. Alternatively you might already have these.
+3. Choose your deployment target from a choice of three:
+   1. [Docker Compose](#docker-compose)
+   2. [Kubernetes](#kubernetes)
+   3. [AWS Anchore Free Trial](#aws-anchore-free-trial)
 
 ### Docker Compose
 
@@ -46,23 +28,15 @@ Resources
 
 Login to DockerHub with access credentials for the Anchore Enterprise images.
 ```bash
-docker login --username 'username-in-docker-config.json' # password-in-docker-config.json
-```
-Pull the images from the Registry
-```bash
-docker pull docker.io/anchore/demo:enterprise-s3c-demo-5.6
-```
-```bash
-docker pull docker.io/anchore/demo:enterprise-ui-s3c-demo-5.6
+docker login --username <your-docker-username> # followed by <your-docker-password>
 ```
 Run docker compose and spin up Anchore Enterprise
 ```bash
 docker compose -f assets/anchore-compose.yaml up -d
 ```
-
-Point your browser at the Anchore Enterprise UI by directing it to http://localhost:3000/ and use credentials:
+Now point your browser at the Anchore Enterprise UI by directing it to http://localhost:3000/ and use admin credentials:
 - username: `admin`
-- password: `foobar`
+- password: `anchore12345!`
 
 ### Kubernetes
 
@@ -73,11 +47,20 @@ Point your browser at the Anchore Enterprise UI by directing it to http://localh
 
 #### Setup
 
-Ensure the setup script is executable, then run the setup script. Please note this will utilize the current active cluster context.
+Store your License, DockerHub and Anchore Credentials as Kubernetes Secrets which is then, used by your Anchore Deployment.
 ```bash
-cd ./assets
-chmod +x setup.sh
-./setup.sh
+kubectl create namespace anchore-demo
+kubectl create secret generic anchore-enterprise-license \
+--from-file=license.yaml=./license.yaml -n anchore-demo
+kubectl create secret docker-registry anchore-enterprise-pullcreds \
+--docker-server=docker.io --docker-username=<your-docker-username> --docker-password=<your-docker-password> -n anchore-demo
+kubectl create secret generic anchore-enterprise-env \
+--from-literal=ANCHORE_DB_HOST=anchore-postgresql --from-literal=ANCHORE_DB_NAME=anchore \
+--from-literal=ANCHORE_DB_USER=anchore --from-literal=ANCHORE_DB_PORT=5432 \
+--from-literal=ANCHORE_DB_PASSWORD=mysecretpassword  --from-literal=ANCHORE_ADMIN_PASSWORD=anchore12345! -n anchore-demo
+kubectl create secret generic anchore-enterprise-ui-env \
+--from-literal=ANCHORE_APPDB_URI=postgres://anchore:mysecretpassword@anchore-postgresql:5432/anchore \
+--from-literal=ANCHORE_REDIS_URI=redis://:anchore-redis,123@anchore-ui-redis-master:6379 -n anchore-demo
 ```
 
 The Anchore UI can be accessed via localhost:8080 with kubernetes port-forwarding:
@@ -88,98 +71,76 @@ The Anchore API can be accessed via localhost:8228 with kubernetes port-forwardi
 ```bash
 kubectl port-forward svc/anchore-demo-enterprise-api -n anchore-demo 8228:8228
 ```
-Retrieve the admin password using the following command:
-MacOS
+
+Run Helm and spin up Anchore Enterprise
 ```bash
-kubectl get secret anchore-demo-enterprise -n anchore-demo -o jsonpath='{.data.ANCHORE_ADMIN_PASSWORD}' | base64 -D
-```
-Linux
-```bash
-kubectl get secret anchore-demo-enterprise -n anchore-demo -o jsonpath='{.data.ANCHORE_ADMIN_PASSWORD}' | base64 -d
+helm repo add anchore https://charts.anchore.io
+helm install -n anchore-demo anchore-demo anchore/enterprise -f values.yaml --namespace anchore-demo --version 3.2.0 # 5.12.0
 ```
 
-Setup UI port forwarding and point your browser at the Anchore Enterprise UI by directing it to http://localhost:8080/ and use credentials:
+Now point your browser at the Anchore Enterprise UI by directing it to http://localhost:8080/ and use admin credentials:
 - username: `admin`
-- password: `kubectl secret output above`
+- password: `anchore12345!`
 
 ### AWS Anchore Free Trial
 
 #### Requirements
 - An AWS account with the ability to launch an AMI/CF instance in us-west-1, us-east-1, or us-east-2.
+  - Running the Anchore trail will incur AWS Compute and other infrastructure costs.
 - Fill out this form [Anchore Free Trial](https://get.anchore.com/free-trial/)
 
-> [!WARNING]
-> There will be AWS Compute and other costs for running the Anchore Free trial.
 
 #### Setup
 
-Follow the [installation instructions](https://sites.google.com/anchore.com/anchore-enterprise-trial) included in the free trial email.
-
-Review [launching the trial](https://sites.google.com/anchore.com/anchore-enterprise-trial#h.ddctetfymxlt) and [accessing the trial](https://sites.google.com/anchore.com/anchore-enterprise-trial#h.ddctetfymxlt) on how to access the Anchore Enterprise UI and login.
+1. Follow the [installation instructions](https://sites.google.com/anchore.com/anchore-enterprise-trial) included in the free trial email.
+2. Review [launching the trial](https://sites.google.com/anchore.com/anchore-enterprise-trial#h.ddctetfymxlt) and [accessing the trial](https://sites.google.com/anchore.com/anchore-enterprise-trial#h.ddctetfymxlt) on how to access the Anchore Enterprise UI and login.
 
 ## Install AnchoreCTL
 
-Next, we'll install the Anchore Enterprise ctl tool, quickly test using the `version` operation, and set up a few environment variables to allow it to interact with your quickstart deployment using the following process:
-
-> [!NOTE]
-> If you have chosen the AWS Anchore Free Trial route, the AnchoreCTL has already been installed and configured for you.
-> Please follow the [installation instructions](https://sites.google.com/anchore.com/anchore-enterprise-trial#h.g74u7lejv5m1) for usage.
+AnchoreCTL is used tool that can be used to interact with Anchore Enterprise for all types of use cases and will be used throughout the labs.
+If you have chosen the AWS Anchore Free Trial route, the AnchoreCTL has [already been installed and configured](https://sites.google.com/anchore.com/anchore-enterprise-trial#h.g74u7lejv5m1) for you. Otherwise, please continue with the following steps:
 
 Download and install the AnchoreCTL
 ```bash
-curl -sSfL  https://anchorectl-releases.anchore.io/anchorectl/install.sh  | sh -s -- -b /usr/local/bin v5.6.2
+curl -sSfL  https://anchorectl-releases.anchore.io/anchorectl/install.sh  | sh -s -- -b /usr/local/bin v5.12.0
 ```
-> [!TIP]
-> For more specific help, please consult our [installation docs](https://docs.anchore.com/current/docs/deployment/anchorectl/).
 
-Create the anchorectl url and username env variables for all environments
+Create the AnchoreCTL environment variables
 ```bash
 export ANCHORECTL_URL="http://localhost:8228"
 export ANCHORECTL_USERNAME="admin"
+export ANCHORECTL_PASSWORD="anchore12345!" 
 ```
-**For Compose only** - create the anchorectl password environment variable
-```bash
-export ANCHORECTL_PASSWORD="foobar" 
-```
-**For Kubernetes only** - create the anchorectl password environment variable
-```bash
-export ANCHORECTL_PASSWORD=$(kubectl get secret anchore-enterprise -o jsonpath='{.data.ANCHORE_ADMIN_PASSWORD}' | base64 -D)
-```
+_You can permanently install and configure `anchorectl` removing the need for setting environment variables, see [Installing AnchoreCTL](https://docs.anchore.com/current/docs/deployment/anchorectl/)._
 
-Quickly test using the `version` operation that anchorectl has been set up correctly. Your output should look like the following:
+Test your AnchoreCTL and Anchore Enterprise deployment
 ```bash
-./anchorectl version
+anchorectl system smoke-tests run
 ```
-> output
+```bash
+# Your output should look something like the following with 'PASS' for all rows:
+┌───────────────────────────────────────┬─────────────────────────────────────────────────┬────────┬────────┐
+│ NAME                                  │ DESCRIPTION                                     │ RESULT │ STDERR │
+├───────────────────────────────────────┼─────────────────────────────────────────────────┼────────┼────────┤
+│ wait-for-system                       │ Wait for the system to be ready                 │ pass   │        │
+│ check-admin-credentials               │ Check anchorectl credentials to run smoke tests │ pass   │        │
+│ create-test-account                   │ Create a test account                           │ pass   │        │
+│ list-test-policies                    │ List the test policies                          │ pass   │        │
+.............................................................................................................
+└───────────────────────────────────────┴─────────────────────────────────────────────────┴────────┴────────┘
 ```
-Application:        anchorectl
-Version:            5.6.2
-SyftVersion:        v1.5.0
-BuildDate:          2024-05-30T02:22:55Z
-GitCommit:          1c7b0cdc25834656cefc4adc3794500a0b6bb807
-GitDescription:     v5.6.2
-Platform:           darwin/arm64
-GoVersion:          go1.21.10
-Compiler:           gc
-```
-
-> [!NOTE]
-> For this tutorial, we're installing the tool in your local directory `./` which requires the environment variables throughout the labs.
-
-> You can permanently install and configure `anchorectl` removing the need for setting environment variables, see [Installing AnchoreCTL](https://docs.anchore.com/current/docs/deployment/anchorectl/).
 
 ## Cleanup
 
-If you would like, please continue testing Anchore Enterprise, you can easily add your own source, images and other integrations (such as CI/CD, SSO and more).
-It's a great way to kick the tyres a little further and examine what the results and workflows could look like for you.
+Please continue testing Anchore Enterprise, you can easily add your own source, images and test other integrations (such as CI/CD, SSO and more).
+More information and examples can be found in the docs pages - https://docs.anchore.com/current/docs/.
 
-- See some examples of CI/CD integrations - https://docs.anchore.com/current/docs/integration/ci_cd/
-- Learn about SSO support - https://docs.anchore.com/current/docs/configuration/sso/ and context switching https://docs.anchore.com/current/docs/configuration/accounts/
+If you need to spin down resources, please review the relevant steps below.
 
-If you do however, need to spin down resources, please check out the steps below.
-
-### Spin down your Anchore deployment
-
+**AnchoreCTL**
+```bash
+sudo rm /usr/local/bin/anchorectl
+```
 **Compose**
 ```bash
 docker compose -f assets/anchore-compose.yaml down
@@ -189,4 +150,6 @@ docker compose -f assets/anchore-compose.yaml down
 helm uninstall anchore
 ```
 **AWS Free Trial**
+```bash
 Please follow the instructions you have received via email.
+```
