@@ -1,8 +1,7 @@
 # Deployment Lab
 
 In this lab you will learn how to deploy Anchore Enterprise into an environment of your choice. 
-A stand-alone deployment requires at least 8GB of RAM and 40GB of Storage. For a smoother experience, we recommended 16 GB of RAM and 100 GB of storage.
-It may take a few minutes for Anchore Enterprise to spin up and for all services to be operational.
+A stand-alone deployment requires at least 8GB of RAM and 40GB of storage. For a smoother experience, we recommended 16 GB of RAM and 100 GB of storage.
 
 _**The deployment in this tutorial is not production ready, and will receive limited support from Anchore, but don't let that stop you from learning!**_
 
