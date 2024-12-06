@@ -17,6 +17,6 @@ _**The deployment in this tutorial is not production ready, and will receive lim
 5. Lab wrap up
    1. Follow instructions for [cleanup](./cleanup.md)
 
-## Next Step
+## Wrap up
 
 Now that you have Anchore Enterprise operational, [pick your next lab](../../README.md#labs) to learn more:

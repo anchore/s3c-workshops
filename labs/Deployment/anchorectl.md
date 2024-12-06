@@ -51,4 +51,4 @@ Your output should look something like the following with 'available' for all ro
 
 ## Next Step
 
-Now that you have Anchore Enterprise & AnchoreCTL operational. Now [proceed to wrap up this lab](./README.md).
+Now that you have Anchore Enterprise & AnchoreCTL operational, [proceed to wrap up this lab](./README.md).
