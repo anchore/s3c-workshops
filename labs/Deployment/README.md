@@ -14,9 +14,7 @@ _**The deployment in this tutorial is not production ready, and will receive lim
    3. Deploy using [AWS Anchore Free Trial](./aws-free-trial.md)
 4. Install AnchoreCTL the Anchore Enterprise Command Line Interface.
    1. Download & Install [AnchoreCTL](./anchorectl.md)
-5. Lab wrap up
+5. [Pick a lab](../../README.md#labs) to test your new Deployment and learn more.
+   1. We recommend the [VIPERR](../VIPERR/README.md) in the first instance.
+6. Lab wrap up
    1. Follow instructions for [cleanup](./cleanup.md)
-
-## Wrap up
-
-Now that you have Anchore Enterprise operational, [pick your next lab](../../README.md#labs) to learn more:
