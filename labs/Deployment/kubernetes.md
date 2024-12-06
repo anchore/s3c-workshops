@@ -84,3 +84,7 @@ _Keep these port-forward commands running as you use Anchore Enterprise and Anch
 Access the Anchore Enterprise Web UI by visiting http://localhost:3000/ and use the following credentials to login:
 - username: `admin`
 - password: `anchore12345`
+
+## Next Step
+
+Now that you have Anchore Enterprise operational, [proceed to the next step](./README.md) of the lab.

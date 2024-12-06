@@ -9,3 +9,7 @@
 
 1. Follow the [installation instructions](https://sites.google.com/anchore.com/anchore-enterprise-trial) included in the free trial email.
 2. Review [launching the trial](https://sites.google.com/anchore.com/anchore-enterprise-trial#h.ddctetfymxlt) and [accessing the trial](https://sites.google.com/anchore.com/anchore-enterprise-trial#h.ddctetfymxlt) on how to access the Anchore Enterprise UI and login.
+
+## Next Step
+
+Now that you have Anchore Enterprise operational, [proceed to the next step](./README.md) of the lab.

@@ -1,6 +1,7 @@
 # AnchoreCTL
 
 AnchoreCTL is a tool used to interact with Anchore Enterprise across many scenarios and use cases. AnchoreCTL will be required for most labs.
+
 _If you have chosen the AWS Anchore Free Trial route, the AnchoreCTL has [already been installed and configured](https://sites.google.com/anchore.com/anchore-enterprise-trial#h.g74u7lejv5m1) for you. Otherwise, please continue with the following steps:_
 
 Download and install the AnchoreCTL
@@ -47,3 +48,7 @@ Your output should look something like the following with 'available' for all ro
 │ reports        │ anchore-enterprise-reports-7b6497fffc-msd7x       │ http://anchore-enterprise-reports.anchore.svc.cluster.local:8558       │ true │ available      │ 5120       │ 5.12.0       │
 └────────────────┴───────────────────────────────────────────────────┴────────────────────────────────────────────────────────────────────────┴──────┴────────────────┴────────────┴──────────────┘
 ```
+
+## Next Step
+
+Now that you have Anchore Enterprise & AnchoreCTL operational. Now [proceed to wrap up this lab](./README.md).

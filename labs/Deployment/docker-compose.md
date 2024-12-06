@@ -20,3 +20,7 @@ docker compose -f anchore-compose.yaml up -d
 Access the Anchore Enterprise Web UI by visiting http://localhost:3000/ and use the following credentials to login:
 - username: `admin`
 - password: `anchore12345`
+
+## Next Step
+
+Now that you have Anchore Enterprise operational, [proceed to the next step](./README.md) of the lab.

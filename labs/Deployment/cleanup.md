@@ -21,3 +21,7 @@ helm uninstall anchore
 ```bash
 Please follow the instructions you have received via email.
 ```
+
+## Next Step
+
+Please come back to learn more. There are more labs coming.

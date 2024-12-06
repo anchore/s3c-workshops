@@ -16,3 +16,7 @@ _**The deployment in this tutorial is not production ready, and will receive lim
    1. Download & Install [AnchoreCTL](./anchorectl.md)
 5. Lab wrap up
    1. Follow instructions for [cleanup](./cleanup.md)
+
+## Next Step
+
+Now that you have Anchore Enterprise operational, [pick your next lab](../../README.md#labs) to learn more:
