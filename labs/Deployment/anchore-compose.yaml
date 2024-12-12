@@ -1,0 +1,281 @@
+# All-in-one docker compose deployment of a full anchore-enterprise service system
+---
+name: "anchore-demo"
+volumes:
+  # Since this is for a quickstart, each minor version has its own db, to use a previous db and upgrade, change this to the db volume name you want to upgrade. e.g. "anchore-enterprise-5.9-db" if upgrading from a 5.9 quickstart deployment.
+  anchore-enterprise-db:
+    # Set this to 'true' to use an external volume. In which case, it must be created manually with "docker volume create anchore-db-volume"
+    external: false
+
+services:
+  api:
+    image: docker.io/anchore/enterprise:v5.12.0
+    depends_on:
+      anchore-db:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
+    volumes:
+      - ./license.yaml:/license.yaml:ro
+    ports:
+      - "8228:8228"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    environment:
+      - ANCHORE_ENDPOINT_HOSTNAME=api
+      - ANCHORE_DB_HOST=anchore-db
+      - ANCHORE_DB_PASSWORD=mysecretpassword
+      - ANCHORE_LOG_LEVEL=INFO
+      - ANCHORE_OAUTH_ENABLED=true
+      - ANCHORE_AUTH_ENABLE_HASHED_PASSWORDS=true
+      - ANCHORE_AUTH_SECRET=supersharedsecret
+    command: ["anchore-enterprise-manager", "service", "start", "apiext"]
+  catalog:
+    image: docker.io/anchore/enterprise:v5.12.0
+    depends_on:
+      anchore-db:
+        condition: service_healthy
+      queue:
+        condition: service_healthy
+    volumes:
+      - ./license.yaml:/license.yaml:ro
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    expose:
+      - 8228
+    environment:
+      - ANCHORE_ENDPOINT_HOSTNAME=catalog
+      - ANCHORE_DB_HOST=anchore-db
+      - ANCHORE_DB_PASSWORD=mysecretpassword
+      - ANCHORE_ADMIN_PASSWORD=anchore12345
+      - ANCHORE_LOG_LEVEL=INFO
+      - ANCHORE_CATALOG_NOTIFICATION_INTERVAL_SEC=0
+      - ANCHORE_OAUTH_ENABLED=true
+      - ANCHORE_AUTH_ENABLE_HASHED_PASSWORDS=true
+      - ANCHORE_AUTH_SECRET=supersharedsecret
+    command: ["anchore-enterprise-manager", "service", "start", "catalog"]
+  queue:
+    image: docker.io/anchore/enterprise:v5.12.0
+    depends_on:
+      anchore-db:
+        condition: service_healthy
+    volumes:
+      - ./license.yaml:/license.yaml:ro
+    expose:
+      - 8228
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    environment:
+      - ANCHORE_ENDPOINT_HOSTNAME=queue
+      - ANCHORE_DB_HOST=anchore-db
+      - ANCHORE_DB_PASSWORD=mysecretpassword
+      - ANCHORE_ADMIN_PASSWORD=anchore12345
+      - ANCHORE_LOG_LEVEL=INFO
+      - ANCHORE_OAUTH_ENABLED=true
+      - ANCHORE_AUTH_ENABLE_HASHED_PASSWORDS=true
+      - ANCHORE_AUTH_SECRET=supersharedsecret
+    command: ["anchore-enterprise-manager", "service", "start", "simplequeue"]
+  policy-engine:
+    image: docker.io/anchore/enterprise:v5.12.0
+    depends_on:
+      anchore-db:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
+      data-syncer:
+        condition: service_healthy
+    volumes:
+      - ./license.yaml:/license.yaml:ro
+    expose:
+      - 8228
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    environment:
+      - ANCHORE_ENDPOINT_HOSTNAME=policy-engine
+      - ANCHORE_DB_HOST=anchore-db
+      - ANCHORE_DB_PASSWORD=mysecretpassword
+      - ANCHORE_LOG_LEVEL=INFO
+      - ANCHORE_OAUTH_ENABLED=true
+      - ANCHORE_AUTH_ENABLE_HASHED_PASSWORDS=true
+      - ANCHORE_AUTH_SECRET=supersharedsecret
+    command: ["anchore-enterprise-manager", "service", "start", "policy_engine"]
+  analyzer:
+    image: docker.io/anchore/enterprise:v5.12.0
+    depends_on:
+      anchore-db:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
+    expose:
+      - 8228
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    environment:
+      - ANCHORE_ENDPOINT_HOSTNAME=analyzer
+      - ANCHORE_DB_HOST=anchore-db
+      - ANCHORE_DB_PASSWORD=mysecretpassword
+      - ANCHORE_LOG_LEVEL=INFO
+      - ANCHORE_OAUTH_ENABLED=true
+      - ANCHORE_AUTH_ENABLE_HASHED_PASSWORDS=true
+      - ANCHORE_AUTH_SECRET=supersharedsecret
+      - ANCHORE_HINTS_ENABLED=true
+    volumes:
+      - ./license.yaml:/license.yaml:ro
+      - /analysis_scratch
+      # To enable and configure malware and catalogers during centralized analysis/scans please review - https://docs.anchore.com/current/docs/configuration/malware.
+      - ./analyzer_config.yaml:/anchore_service/analyzer_config.yaml:z
+    command: ["anchore-enterprise-manager", "service", "start", "analyzer"]
+  anchore-db:
+    image: docker.io/library/postgres:13
+    volumes:
+      - anchore-enterprise-db:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_PASSWORD=mysecretpassword
+    expose:
+      - 5432
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+  reports:
+    image: docker.io/anchore/enterprise:v5.12.0
+    volumes:
+      - ./license.yaml:/license.yaml:ro
+    depends_on:
+      anchore-db:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
+    ports:
+      - "8558:8228"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    environment:
+      - ANCHORE_ENDPOINT_HOSTNAME=reports
+      - ANCHORE_DB_HOST=anchore-db
+      - ANCHORE_DB_PASSWORD=mysecretpassword
+      - ANCHORE_LOG_LEVEL=INFO
+      - ANCHORE_OAUTH_ENABLED=true
+      - ANCHORE_AUTH_ENABLE_HASHED_PASSWORDS=true
+      - ANCHORE_AUTH_SECRET=supersharedsecret
+    command: ["anchore-enterprise-manager", "service", "start", "reports"]
+  reports_worker:
+    image: docker.io/anchore/enterprise:v5.12.0
+    volumes:
+      - ./license.yaml:/license.yaml:ro
+    depends_on:
+      anchore-db:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
+    expose:
+      - 8228
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    environment:
+      - ANCHORE_ENDPOINT_HOSTNAME=reports_worker
+      - ANCHORE_DB_HOST=anchore-db
+      - ANCHORE_DB_PASSWORD=mysecretpassword
+      - ANCHORE_LOG_LEVEL=INFO
+      - ANCHORE_OAUTH_ENABLED=true
+      - ANCHORE_AUTH_ENABLE_HASHED_PASSWORDS=true
+      - ANCHORE_AUTH_SECRET=supersharedsecret
+    command:
+      ["anchore-enterprise-manager", "service", "start", "reports_worker"]
+  notifications:
+    image: docker.io/anchore/enterprise:v5.12.0
+    volumes:
+      - ./license.yaml:/license.yaml:ro
+    depends_on:
+      anchore-db:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
+    ports:
+      - "8668:8228"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    environment:
+      - ANCHORE_ENDPOINT_HOSTNAME=notifications
+      - ANCHORE_DB_HOST=anchore-db
+      - ANCHORE_DB_PASSWORD=mysecretpassword
+      - ANCHORE_LOG_LEVEL=INFO
+      - ANCHORE_ENTERPRISE_UI_URL=http://localhost:3000
+      - ANCHORE_OAUTH_ENABLED=true
+      - ANCHORE_AUTH_ENABLE_HASHED_PASSWORDS=true
+      - ANCHORE_AUTH_SECRET=supersharedsecret
+    command: ["anchore-enterprise-manager", "service", "start", "notifications"]
+  data-syncer:
+    image: docker.io/anchore/enterprise:v5.12.0
+    volumes:
+      - ./license.yaml:/license.yaml:ro
+    depends_on:
+      anchore-db:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
+    ports:
+      - "8778:8228"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    environment:
+      - ANCHORE_ENDPOINT_HOSTNAME=data-syncer
+      - ANCHORE_DB_HOST=anchore-db
+      - ANCHORE_DB_PASSWORD=mysecretpassword
+      - ANCHORE_LOG_LEVEL=INFO
+      - ANCHORE_OAUTH_ENABLED=true
+      - ANCHORE_AUTH_SECRET=supersharedsecret
+      - ANCHORE_DATA_SYNC_AUTO_SYNC_ENABLED=true
+    command:
+      ["anchore-enterprise-manager", "service", "start", "data_syncer"]
+  ui-redis:
+    image: docker.io/library/redis:7
+    expose:
+      - 6379
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli PING"]
+  ui:
+    image: docker.io/anchore/enterprise-ui:v5.12.0
+    volumes:
+      - ./license.yaml:/license.yaml:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      ui-redis:
+        condition: service_healthy
+      anchore-db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    environment:
+      - ANCHORE_ENTERPRISE_URI=http://api:8228/v2
+      - ANCHORE_REDIS_URI=redis://ui-redis:6379
+      - ANCHORE_APPDB_URI=postgres://postgres:mysecretpassword@anchore-db:5432/postgres
