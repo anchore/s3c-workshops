@@ -32,7 +32,7 @@ Anchore Enterprise is a flexible platform that can be utilized in many ways, her
 
 Each lab below steps you through tried and tested examples across many use cases.  
 
-* [Deployment](labs/Deployment/README.md) - Get Anchore Enterprise Running (the first step before continuing to other labs)
+* [Deployment](labs/Deployment/README.md) - Get Anchore Enterprise & AnchoreCTL Running (REQUIRED)
 * [VIPERR](labs/VIPERR/README.md) - **V**isibility, **I**nspection, **P**olicy **E**nforcement, **R**emediation, **R**eporting
 
 ## Learn More

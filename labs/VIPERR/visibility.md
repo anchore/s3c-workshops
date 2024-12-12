@@ -17,9 +17,6 @@ There are many goals around SBOM visibility, here are our top 10:
 9. Identification of relevant image/pkg metadata
 10. Collect, safeguard, maintain, and share provenance data for all components of each software release
 
-> [!TIP]
-> For a visual walkthrough checkout the [visibility workshop materials](https://viperr.anchore.com/visibility/).
-
 ## Lab Exercises
 
 An application starts life as code, and eventually (in the cloud native world) transforms into a distributable container. 

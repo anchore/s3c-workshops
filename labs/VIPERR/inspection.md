@@ -20,70 +20,40 @@ Inspecting the results of SBOMs and vulnerabilities across source applications a
 9. Inspect for vulns inherited by base images
 10. Inspect relational analysis to identify vulns across images and stages
 
-> [!TIP]
-> For a visual walkthrough checkout the [inspection workshop materials](https://viperr.anchore.com/inspection/).
-
 ## Lab Exercises
 
 ### Inspection of feed sources
-Anchore Enterprise uses security vulnerability data from a number of different sources from NVD to more specific sources such as GHSA (GitHub Advisory Database) and vendor specific sources.
-The Anchore Feed Service collects this vulnerability source data and normalizes it into a dataset, which in turn is used to show vulnerabilities for specific images/source and well as used by the Policy Engine to evaluate policies and make decisions.
-For the demo environment, don't worry we have pre-configured and bundled this vulnerability dataset for you. The demo does however, miss some enterprise sources such as MSRC and Anchore's own exclusions' data.
+Anchore Enterprise utilizes a number of security datasets and vulnerability data from a number of different sources from NVD to more specific sources.
+The Anchore Data Syncer Service downloads the latest vulnerability data, which in turn is used to map found packages and software to known vulnerabilities.
 
-Anchore prefers to use the most specific data to enable the best possible vulnerability findings. For example, whilst a general CVE might apply to a particular version of Bash, the way an OS vendor like Ubuntu could install Bash, might mean that the general CVE has a lower risk and rating.
+Anchore prefers to use the most specific data to enable the best possible vulnerability findings. For example, whilst a general CVSS score from NVD might apply to a particular version of Bash, the way an OS vendor like Ubuntu installs Bash could result in a different often reduced rating.
 Having up to date, relevant and specific vulnerability data is paramount. In combination with accurate SBOMs, the correctness of vulnerability data helps steer you away from false positives and false negatives and get you the insights about the software that you need.
 
-Let's first check what vulnerability data we have in our new deployment. Is it up to date? Does it cover what we need?
+Let's first check what vulnerability data we have in our new deployment. When first deployed it can take several minutes for the Data Syncer to download the latest data.
 ```bash
 anchorectl feed list
 ```
 Output
 ```
-┌─────────────────┬────────────────────┬─────────┬──────────────────────┬──────────────┐
-│ FEED            │ GROUP              │ ENABLED │ LAST SYNC            │ RECORD COUNT │
-├─────────────────┼────────────────────┼─────────┼──────────────────────┼──────────────┤
-│ vulnerabilities │ github:composer    │ true    │ 2024-03-14T12:55:47Z │ 2821         │
-│ vulnerabilities │ github:dart        │ true    │ 2024-03-14T12:55:47Z │ 6            │
-│ vulnerabilities │ github:gem         │ true    │ 2024-03-14T12:55:47Z │ 763          │
-│ vulnerabilities │ github:go          │ true    │ 2024-03-14T12:55:47Z │ 1504         │
-│ vulnerabilities │ github:java        │ true    │ 2024-03-14T12:55:47Z │ 4777         │
-│ vulnerabilities │ github:npm         │ true    │ 2024-03-14T12:55:47Z │ 13363        │
-│ vulnerabilities │ github:nuget       │ true    │ 2024-03-14T12:55:47Z │ 566          │
-│ vulnerabilities │ github:python      │ true    │ 2024-03-14T12:55:47Z │ 2488         │
-│ vulnerabilities │ github:rust        │ true    │ 2024-03-14T12:55:47Z │ 730          │
-│ vulnerabilities │ github:swift       │ true    │ 2024-03-14T12:55:47Z │ 30           │
-│ vulnerabilities │ nvd                │ true    │ 2024-03-14T12:55:47Z │ 241467       │
-│ vulnerabilities │ alpine:3.19        │ true    │ 2024-03-14T12:55:47Z │ 6087         │
-│ vulnerabilities │ alpine:3.2         │ true    │ 2024-03-14T12:55:47Z │ 305          │
+ ✔ List feed
+┌─────────────────────────────────────────────────┬────────────────────┬─────────┬──────────────────────┬──────────────┐
+│ FEED                                            │ GROUP              │ ENABLED │ LAST UPDATED         │ RECORD COUNT │
+├─────────────────────────────────────────────────┼────────────────────┼─────────┼──────────────────────┼──────────────┤
+│ ClamAV Malware Database                         │ clamav_db          │ true    │ 2024-12-12T06:06:35Z │ 1            │
+│ CISA Known Exploitable Vulnerabilities Database │ kev_db             │ true    │ 2024-12-12T06:08:08Z │ 1228         │
+│ Exploit Prediction Scoring System Database      │ epss_db            │ true    │ 2024-12-12T06:04:42Z │ 269687       │
+│ Vulnerabilities                                 │ github:composer    │ true    │ 2024-12-12T06:13:36Z │ 4216         │
+│ Vulnerabilities                                 │ github:dart        │ true    │ 2024-12-12T06:13:36Z │ 10           │
+│ Vulnerabilities                                 │ github:gem         │ true    │ 2024-12-12T06:13:36Z │ 839          │
+│ Vulnerabilities                                 │ github:go          │ true    │ 2024-12-12T06:13:36Z │ 1991         │
+│ Vulnerabilities                                 │ github:java        │ true    │ 2024-12-12T06:13:36Z │ 5154         │
 ...
-│ vulnerabilities │ alpine:edge        │ true    │ 2024-03-14T12:55:47Z │ 6096         │
-│ vulnerabilities │ amzn:2             │ true    │ 2024-03-14T12:55:47Z │ 1990         │
-│ vulnerabilities │ amzn:2022          │ true    │ 2024-03-14T12:55:47Z │ 276          │
-│ vulnerabilities │ amzn:2023          │ true    │ 2024-03-14T12:55:47Z │ 579          │
-│ vulnerabilities │ chainguard:rolling │ true    │ 2024-03-14T12:55:47Z │ 1593         │
-│ vulnerabilities │ debian:10          │ true    │ 2024-03-14T12:55:47Z │ 29569        │
-...
-│ vulnerabilities │ debian:7           │ true    │ 2024-03-14T12:55:47Z │ 20455        │
-│ vulnerabilities │ debian:unstable    │ true    │ 2024-03-14T12:55:47Z │ 32200        │
-│ vulnerabilities │ mariner:1.0        │ true    │ 2024-03-14T12:55:47Z │ 2092         │
-│ vulnerabilities │ mariner:2.0        │ true    │ 2024-03-14T12:55:47Z │ 2148         │
-│ vulnerabilities │ ol:5               │ true    │ 2024-03-14T12:55:47Z │ 1255         │
-..
-│ vulnerabilities │ rhel:5             │ true    │ 2024-03-14T12:55:47Z │ 7202         │
-..
-│ vulnerabilities │ rhel:9             │ true    │ 2024-03-14T12:55:47Z │ 2331         │
-│ vulnerabilities │ sles:11            │ true    │ 2024-03-14T12:55:47Z │ 594          │
-..
-│ vulnerabilities │ sles:15.5          │ true    │ 2024-03-14T12:55:47Z │ 8731         │
-│ vulnerabilities │ ubuntu:12.04       │ true    │ 2024-03-14T12:55:47Z │ 14934        │
-...
-│ vulnerabilities │ ubuntu:23.10       │ true    │ 2024-03-14T12:55:47Z │ 15359        │
-│ vulnerabilities │ wolfi:rolling      │ true    │ 2024-03-14T12:55:47Z │ 1449         │
-└─────────────────┴────────────────────┴─────────┴──────────────────────┴──────────────┘
+│ Vulnerabilities                                 │ sles:15.6          │ true    │ 2024-12-12T06:13:34Z │ 11083        │
+│ Vulnerabilities                                 │ ubuntu:12.04       │ true    │ 2024-12-12T06:14:00Z │ 14934        │
 ```
 You also inspect the events data to see when each source was last updated and if there were any problems.
 
-Keeping Anchore fresh with relevant data is one of the key tenants of the product and service.
+Keeping Anchore fresh with relevant data is one of the key tenants of the product and service. To learn more about how Anchore operates [vulnerability management](https://docs.anchore.com/current/docs/vulnerability_management/).
 
 > [!TIP]
 > We can also see this feed information in the Web UI under `system` when logged in as Admin.

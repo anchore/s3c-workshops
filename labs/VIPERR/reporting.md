@@ -19,9 +19,6 @@ Below are the top 10 capabilities for how Anchore delivers reporting:
 9. Included Reports in Risk Assessment/Risk Mgmt Process
 10. Regularly update reporting mechanisms for new checks
 
-> [!TIP]
-> For a visual walkthrough checkout the [Reporting workshop materials](https://viperr.anchore.com/reporting/) (_there are some slight differences on ui_).
-
 ## Lab Exercises
 
 For this lab, we turn to the Web UI to generate reports that will help surface some of the capabilities and information on offer to help you manage your software. 

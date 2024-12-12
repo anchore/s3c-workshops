@@ -17,9 +17,6 @@ The capabilities here can can support many use-cases and here are our top 10:
 9. Automated remediation responses to stakeholders
 10. Create timeouts for remediation using policy
 
-> [!TIP]
-> For a visual walkthrough checkout the [Remediation workshop materials](https://viperr.anchore.com/remediation/).
-
 ## Lab Exercises
 
 ### Remediation with the Action Workbench

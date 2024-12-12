@@ -20,9 +20,6 @@ Policy enforcement can be applied at any stage in the development process, from 
 9. Policy blocks unauthorized images reaching registry
 10. Don’t pass builds that violate CVE thresholds
 
-> [!TIP]
-> For a visual walkthrough checkout the [Policy enforcement workshop materials](https://viperr.anchore.com/policy/).
-
 ## Lab Exercises
 
 Once an image has been analyzed and its content has been discovered, categorized, and processed, the results can be evaluated against a user-defined set of checks to give a final pass/fail recommendation for an image. Anchore Enterprise policies are how users describe which checks to perform on what images and how the results should be interpreted.
