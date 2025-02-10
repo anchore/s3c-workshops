@@ -1,8 +1,8 @@
-# Software Security in the Real World
+# S3C Workshops - Software Security in the Real World
 
 This repo offers step-by-step guidance that take you from deploying Anchore Enterprise (version 5.6.2) to a series of specific labs, showcasing how you can utilize Anchore Enterprise to improve security across your software supply chain.
 
-## Target Audience
+## Target audience
 
 Anyone who wants to understand how they can improve security across their SDLC using Anchore Enterprise.
 This repository will get you a running Anchore Enterprise deployment in either a Docker Compose to Kubernetes. 
@@ -35,7 +35,7 @@ Each lab below steps you through tried and tested examples across many use cases
 * [Deployment](labs/Deployment/README.md) - Get Anchore Enterprise & AnchoreCTL Running (REQUIRED)
 * [VIPERR](labs/VIPERR/README.md) - **V**isibility, **I**nspection, **P**olicy **E**nforcement, **R**emediation, **R**eporting
 
-## Learn More
+## Learn more
 
 Anchore supports many use cases, configurations and environments, please check out the Anchore Docs, wider resources, or get in touch directly to learn more.
 
