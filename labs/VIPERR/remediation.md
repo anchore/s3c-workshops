@@ -74,7 +74,9 @@ Giving you time to set the workflow in place to resolve, but keep you shipping i
 
 See the max_days_since_creation, max_days_since_fix trigger for examples - https://docs.anchore.com/current/docs/compliance_management/policy_overview_ctl/policy_checks/
 
-### Remediation with automated notifications on Vulnerability and Policy Changes
+### Remediation with automated notifications
+
+An image released into Production on Monday with zero CVEs, might sadly have CVEs come Wednesday. Our jobs as developers to remediate is never done. However, you can enable subscriptions and get automated notifications when this happens, which can help you prioritize and remediate as needed. 
 
 You can subscribe to both vulnerability and policy changes for a given image. When enabled, the images in question are checked on a set cycle timer defined in your Anchore Enterprise deployment as shown below: 
 ```
