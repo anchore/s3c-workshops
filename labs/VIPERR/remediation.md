@@ -74,7 +74,7 @@ Giving you time to set the workflow in place to resolve, but keep you shipping i
 
 See the max_days_since_creation, max_days_since_fix trigger for examples - https://docs.anchore.com/current/docs/compliance_management/policy_overview_ctl/policy_checks/
 
-### Remediation with automated notifications
+### Remediation using subscriptions and notifications
 
 An image released into Production on Monday with zero CVEs, might sadly have CVEs come Wednesday. Our jobs as developers to remediate is never done. However, you can enable subscriptions and get automated notifications when this happens, which can help you prioritize and remediate as needed. 
 
@@ -118,6 +118,26 @@ Once all findings are addressed the alert is closed, allowing for an efficient w
 > No notification can be generated from this, and there is no anchorectl support instead the only options are the UI and Alerts API.
 
 This raises a clear notification in the UI to help initiate the remediation workflow and address the violations via the remediation feature. Once all findings are addressed the alert is closed, allowing an efficient workflow for users to bring their image’s into compliance with their policy.
+
+### Remediation - Prevention is often better than a cure
+
+When choosing a base image or other type of image needed in your tech stack, it's advised to first check the health and status of the image in question first. 
+Now whilst this will change over time, it might be helpful to identify any larger issues right out of the gate. 
+Below is a fairly popular image in the ecosystem, and here you see the process to add and then retrieve the vulnerabilities on this image 
+  
+
+```bash
+anchorectl image add alpine:latest --wait
+...
+anchorectl image vuln alpine:latest
+ ✔ Fetched vulnerabilities                   [2 vulnerabilities]                                                                                alpine:latest
+┌────────────────┬──────────┬────────────┬──────────┬──────────┬──────────────┬──────┬─────────────┬────────────────┬─────────────────────────────────────────────────┐
+│ ID             │ SEVERITY │ NAME       │ VERSION  │ FIX      │ WILL NOT FIX │ TYPE │ FEED GROUP  │ CVES           │ URL                                             │
+├────────────────┼──────────┼────────────┼──────────┼──────────┼──────────────┼──────┼─────────────┼────────────────┼─────────────────────────────────────────────────┤
+│ CVE-2024-13176 │ Medium   │ libcrypto3 │ 3.3.2-r4 │ 3.3.2-r5 │ false        │ APKG │ alpine:3.21 │ CVE-2024-13176 │ https://www.cve.org/CVERecord?id=CVE-2024-13176 │
+│ CVE-2024-13176 │ Medium   │ libssl3    │ 3.3.2-r4 │ 3.3.2-r5 │ false        │ APKG │ alpine:3.21 │ CVE-2024-13176 │ https://www.cve.org/CVERecord?id=CVE-2024-13176 │
+└────────────────┴──────────┴────────────┴──────────┴──────────┴──────────────┴──────┴─────────────┴────────────────┴─────────────────────────────────────────────────┘
+```
 
 ## Next Lab
 
