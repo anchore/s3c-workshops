@@ -76,13 +76,15 @@ See the max_days_since_creation, max_days_since_fix trigger for examples - https
 
 ### Remediation with automated notifications on Vulnerability and Policy Changes
 
-You can subscribe to policy_evaluation changes, for example when a policy moves from GO to STOP.
+You can subscribe to both vulnerability and policy changes for a given image. When enabled, the images in question are checked on a set cycle timer defined in your Anchore Enterprise deployment as shown below: 
+```
+anchoreConfig.catalog.cycle_timers.vulnerability_scan = 14400 (default in seconds)
+anchoreConfig.catalog.cycle_timers.policy_eval = 3600 (default in seconds)
+```
+Subscriptions then throw a notification which can be sent onwards to many endpoints such as a webhook, email or Slack for processing and action. See the [Notifications documentation](https://docs.anchore.com/current/docs/configuration/notifications/) for more details.
+Some use cases involve sending new data downstream to SIEM systems and other Cyber Security tooling.
 
-You can also configure these to be sent as a notification via a webhook to an endpoint like email or Slack.
-These are also logged as events in the events ui, where the json payload can be viewed.
-
-Beyond just simple policy checks, you may want to activate subscriptions on your new image.  
-This will begin continuous updates of the vulnerability matches and/or policy evaluation in the background (this is most useful when coupled with the "Notifications" facility of Anchore Enterprise, see the [Notifications documentation](https://docs.anchore.com/current/docs/configuration/notifications/) for more details):
+By default both the policy and vulnerability subscriptions are disabled. The initial scan and later regular cycle timer in the reporting system will fetch and update both policy and vulnerability data (but not throw a notification). To enable subscriptions for a given image run the following:
 
 Begin continuous updates of vulnerability matches
 ```bash
@@ -93,8 +95,8 @@ Begin continuous updates of policy evaluation
 ```bash
 anchorectl subscription activate ${IMAGE_NAME} policy_eval   
 ```
-> [!IMPORTANT] 
-> You will need to set up and configure a notification endpoint to receive these events.
+
+You will now need to set up and configure a notification endpoint to receive these events. Alternatively, you can also see these subscriptions as events in the "Events & Notifications" tab in the Web UI. Here you can see the event and view the json payload too.
 
 ### Remediation using alerts on image tags
 
