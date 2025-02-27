@@ -113,20 +113,20 @@ Instruct AnchoreCTL to pull an image from the Docker Dameon and locally analyze.
 anchorectl image add app:v1.0.0 --from docker 
 ```
 
-Instruct AnchoreCTL to pull an image from the remote Registry and locally analyze. _(requires local registry auth access)_
+Instruct AnchoreCTL to pull an image from a remote Registry and locally analyze. _(requires local registry auth access)_
 ```bash
-anchorectl image add app:v1.0.0 --from registry 
+anchorectl image add docker.io/danperry/app:v2.0.0 --from registry 
 ```
 
 Instruct AnchoreCTL to pull an image from a docker archived tar and locally analyze.
 ```bash
-docker save app:v1.0.0  -o app-v1.0.0.tar
+docker save app:v1.0.0 -o app-v1.0.0.tar
 anchorectl image add app:v1.0.0 --from docker-archive:./app-v1.0.0.tar
 ```
 
 **Centralized Mode**
 
-Instruct AnchoreCTL to analyze the image tag and centrally analyze the Anchore Enterprise Server
+Instruct AnchoreCTL to centrally analyze the image tag on the Anchore Enterprise Server.
 ```bash
 anchorectl image add docker.io/danperry/app:v2.0.0
 ```
@@ -168,29 +168,26 @@ Now go and review both the `applications` and `images` sections in the web UI an
 
 ### SBOM Visibility of multi-architecture images
 
-Another lens to cover with SBOMs for container images, is that Anchore can support multi-architecture images. 
-Perhaps you ship a product or container that needs to work across many types of architectures. 
-In any case, you will need to manage the SBOMs and associated security data and here Anchore can support your efforts. Let's run through an example
+Anchore Enterprise can support multi-architecture images and as such we will need to generate separate SBOMs for each architecture.
+This might be useful, if you ship a product or image that needs to work across many types of architectures. 
+Let's run through an example
 
-Submit image for addition to Anchore Enterprise (Anchore Enterprise will pull image from a public registry and perform full analysis)
-This is called centralized analysis. 
-Please note this image is hosted publicly so NO credentials are required. However, Anchore does support private repositories that conform to the docker_v2 api.
+Let's first analyze a public multi-architecture image.
 ```bash
 anchorectl image add docker.io/centos:latest
 ```
-Review this new CentOS image in the `images` tab in the Web UI, once loaded select the SBOM Tab. 
+_Please note this image is hosted publicly so NO credentials are required. However, Anchore does support private repositories that conform to the docker_v2 api._
+
+Now review this CentOS image in the `images` tab in the Web UI, once loaded select the 'Image MetaData' Tab. 
 You will notice it contains several images, this is because the CentOS image is a multi architecture image.
 Let's now re-add the CentOS image, but this time be specific and add only the ARM64 platform image.
 ```bash
 anchorectl image add docker.io/centos:latest --from registry --platform  arm64 --force
 ```
-> [!NOTE]
-> Remember `--force` tells Anchore Enterprise to re analyze or scan the image. And not just reload the latest vulnerabilities.
 
-Check the Web UI once again to see the arm64 architecture in the Image SHA and also check out the Changelog tab.
-You can see the new Architecture but also how this changed over time. This is what we call SBOM drift. 
-Drift can help us detect deeper security issues, we will cover this more in a later lab on policy enforcement. 
-This can uncover changes in everything from Architecture changes like this example to more nuanced package changes.
+Check the Web UI once again to see the arm64 architecture in the Image SHA and also check out the 'Changelog' UI tab.
+You can see the new Architecture, but also which of the contents/software changed. This leads to another topic called SBOM drift. 
+SBOM Drift can help detect deeper security issues, we will cover this more in a later lab on policy enforcement. 
 
 ### SBOM Visibility using watchers & subscriptions
 
