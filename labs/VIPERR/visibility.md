@@ -279,9 +279,8 @@ anchorectl image add docker.io/centos:7
 Check out the events generated in the Web UI by visiting `/events`
 
 > [!TIP]
-> If you want to send an event notification from a subscription to an endpoint, please review our [UI Walkthrough](https://docs.anchore.com/current/docs/configuration/notifications/#notifications-ui-walktrough) docs.
-
-Watches, Subscriptions and downstream notifications offer many possibilities to build very powerful workflows.
+> Watches, Subscriptions and downstream notifications offer many possibilities to build very powerful workflows.
+> Please review the [Notifications UI Walkthrough](https://docs.anchore.com/current/docs/configuration/notifications/#notifications-ui-walktrough) docs to learn more.
 
 ### SBOM Visibility using content hints
 
