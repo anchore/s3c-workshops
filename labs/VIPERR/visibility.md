@@ -1,8 +1,8 @@
 # Visibility
 
-Building an accurate Software Bill of Materials (SBOM) from source to a built and running container across the SDLC is vital.
-This data is needed to aid compliance as well as operational tasks such as analysis, policy enforcement and remediation.
-In this lab, you will be adding some example applications across source and container origins to get visibility into their contents and application at the different stages of the SDLC.
+Building an accurate Software Bill of Materials (SBOM) is a foundational activity. An SBOM can be built using a number of source locations (source code, container etc) at different stages in your SDLC.
+This foundational SBOM data is needed in all downstream activities on everything from vulnerability management to other activities like compliance.
+In this lab, you will be building SBOMs using the example applications packaged in both source and container image formats. With these SBOMs you can then get visibility into the application contents on everything from OS to language specific sofware components. You will learn the key processes of ingesting and building accurate SBOMs across a typical application lifecycle.
 
 There are many goals around SBOM visibility, here are our top 10:
 
@@ -92,58 +92,62 @@ Build the v1.0.0 app image locally and tag it as v1.0.0
 ```bash
 docker build . -t app:v1.0.0
 ```
-Submit the new image to Anchore Enterprise (anchorectl will perform full local image analysis locally in Distributed mode)
+
+Anchore can analyze a local image (Distributed mode) or instruct Anchore Enterprise to pull the image from a registry to analyze (Centralized mode)
+
+Let's submit our new image to Anchore Enterprise using Distributed mode and instrict anchorectl to use the image from the Docker Daemon on our environment.
 ```bash
 anchorectl image add app:v1.0.0 --from docker 
 ```
-
-Anchore can use scan/analyse a local image (Distributed mode) or tell Anchore Enterprise to pull the image from a registry in order to scan/analyse (Centralized mode)
 
 Distributed image analysis can be useful if for example you have the image built locally already in your CI/CD environment. 
-This can save time on analysis as in Centralized mode the Anchore Enterprise Server would need to download the image and then scan.
-There is one limitation with Distributed mode, Malware scanning is not possible, as this can only take place on the server in Centralized mode.
+Furthermore, this can save analysis time as with Centralized mode the Anchore Enterprise Server would need to download the image and then scan.
+However, one thing to note, with Distributed mode you do not get extra analysis or Malware scanning as this can only take place on the server in Centralized mode.
 
-Let's look at some examples
+Let's look at some more examples
 
-Distributed Mode
+**Distributed Mode**
 
-Using a local image and using the known local image tag.
+Instruct AnchoreCTL to pull an image from the Docker Dameon locally.
 ```bash
 anchorectl image add app:v1.0.0 --from docker 
 ```
 
-Using a local image and using the known registry image tag.
+Instruct AnchoreCTL to pull an image from the registry locally.
 ```bash
 anchorectl image add app:v1.0.0 --from registry 
 ```
+This requires that you have local registry access
 
-Using a local image tar.
+Instruct AnchoreCTL to pull an image from a docker archived tar.
 ```bash
 docker save app:v1.0.0  -o app-v1.0.0.tar
 anchorectl image add app:v1.0.0 --from docker-archive:./app-v1.0.0.tar
 ```
 
-Centralized Mode
+**Centralized Mode**
 
-Using the registry and repo reference to pull and scan/analyse the image.
+Instruct AnchoreCTL to analyze the image tag centrally on the Anchore Enterprise Server
 ```bash
 anchorectl image add docker.io/danperry/app:v2.0.0
 ```
 
-Give your image a custom registry and repo name.
+**Other options**
+
+Instruct AnchoreCTL to set a custom registry, repo and tag name.
 ```bash
 anchorectl image add image.fakehost.com:newapp:v1.0.0 --from docker:app:v1.0.0
 anchorectl image add tar.fakehost.com:newapp:v1.0.0 --from docker-archive:./app-v1.0.0.tar
 ```
 
-Let's resubmit our local app image, but this time add the Dockerfile as extra data.
+Instruct AnchoreCTL to analyze our local app image, but this time add extra metadata, the common Dockerfile build artifact.
 ```bash
 anchorectl image add app:v1.0.0 --from docker --dockerfile ./Dockerfile
 ```
-When reviewing the UI for this image you may notice "No results" for the Dockerfile tab under images in the Web UI.
 
+Checking the UI for this image you may notice "No results" for the Dockerfile tab under images in the Web UI.
 Anchore is clever when you scan the same image as it notices no differences and therefore will not perform certain scan steps as a result. 
-However, in this case we want to tell Anchore to re analyse the image so that we can pick up and use the newly supplied Dockerfile data.
+However, in this case we want to tell Anchore to re analyze the image so that we can pick up and use the newly supplied Dockerfile data.
 We can do this by using --force
 > [!NOTE]
 > --force can be handy in many other use-cases too, lets say you have just enabled malware and now want to rescan and see the results
@@ -183,7 +187,7 @@ Let's now re-add the CentOS image, but this time be specific and add only the AR
 anchorectl image add docker.io/centos:latest --from registry --platform  arm64 --force
 ```
 > [!NOTE]
-> Remember `--force` tells Anchore Enterprise to re analyse or scan the image. And not just reload the latest vulnerabilities.
+> Remember `--force` tells Anchore Enterprise to re analyze or scan the image. And not just reload the latest vulnerabilities.
 
 Check the Web UI once again to see the arm64 architecture in the Image SHA and also check out the Changelog tab.
 You can see the new Architecture but also how this changed over time. This is what we call SBOM drift. 
