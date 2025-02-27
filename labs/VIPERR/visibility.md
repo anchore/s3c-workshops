@@ -98,7 +98,8 @@ Let's submit our new image to Anchore Enterprise using Distributed mode and inst
 anchorectl image add app:v1.0.0 --from docker 
 ```
 
-> [!NOTE] Anchore can analyze an image in two modes: Distributed And Centralized. 
+> [!NOTE] 
+> Anchore can analyze an image in two modes: Distributed And Centralized. 
 > Distributed Mode will instruct AnchoreCTL to locally analyze and image and send the SBOM to Anchore Enterprise.
 > Centralized Mode will instruct Anchore Enterprise to pull the image from a registry to analyze (Centralized mode)
 > Both have their own advantages. One thing to note, with Distributed mode, you do not get Malware scanning as this can only take place on the server in Centralized mode.
