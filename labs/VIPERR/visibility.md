@@ -88,21 +88,20 @@ This release contained a Dockerfile, so let's move on to build an image.
 The v1.0.0 app like many in the cloud native world, is now ready to be turned into an image. When we do this we might also use bring in additional software and place it into an OS base image such as ubuntu minimal.
 With extra software our SBOM will grow and as such we will want to get insight into this artifact. This section will cover how we can add such an image 
 
-Build the v1.0.0 app image locally and tag it as v1.0.0
+Build the v1.0.0 app image and tag it as v1.0.0
 ```bash
 docker build . -t app:v1.0.0
 ```
-
-Anchore can analyze a local image (Distributed mode) or instruct Anchore Enterprise to pull the image from a registry to analyze (Centralized mode)
 
 Let's submit our new image to Anchore Enterprise using Distributed mode and instrict anchorectl to use the image from the Docker Daemon on our environment.
 ```bash
 anchorectl image add app:v1.0.0 --from docker 
 ```
 
-Distributed image analysis can be useful if for example you have the image built locally already in your CI/CD environment. 
-Furthermore, this can save analysis time as with Centralized mode the Anchore Enterprise Server would need to download the image and then scan.
-However, one thing to note, with Distributed mode you do not get extra analysis or Malware scanning as this can only take place on the server in Centralized mode.
+> [!NOTE] Anchore can analyze an image in two modes: Distributed And Centralized. 
+> Distributed Mode will instruct AnchoreCTL to locally analyze and image and send the SBOM to Anchore Enterprise.
+> Centralized Mode will instruct Anchore Enterprise to pull the image from a registry to analyze (Centralized mode)
+> Both have their own advantages. One thing to note, with Distributed mode, you do not get Malware scanning as this can only take place on the server in Centralized mode.
 
 Let's look at Distributed and Centralized mode in more detail before continuing:
 
@@ -163,7 +162,7 @@ Now go and review both the `applications` and `images` sections in the web UI an
 > [!NOTE]
 > Why supply the Dockerfile?
 > Simply - It will provide extra data about the image. Anchore does inspect and infer some of the image history using the layers, however this is limited and no substitute for a full Dockerfile.
-> Firstly, this allows you to inspect and see the full Dockerfile contents in the Anchore Enterprise Web UI. Secondly, you can define policy rules based on what is contained in the Dockerfile. 
+> Once submitted, you can and your wider team can see the full Dockerfile contents in the Anchore Enterprise Web UI. Secondly, you can build policy rules based on the Dockerfile contents. 
 > For example, raise a policy violation if my image is exposing port 22 with EXPOSE 22 or the container is running the application with USER root. More details in the policy section.
 
 ### SBOM Visibility of multi-architecture images
