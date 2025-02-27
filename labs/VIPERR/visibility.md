@@ -191,12 +191,9 @@ SBOM Drift can help detect deeper security issues, we will cover this more in a 
 
 ### SBOM Visibility using watchers & subscriptions
 
-Anchore has the capability to monitor/watch external:
- - Docker Registries for updates to tags as well as new images pushed into a repository. 
- - Runtime environments such as Kubernetes and ECS for containers deployed into those environments.
-As new updates or images are found, they are automatically submitted for SBOM analysis and can later progress to onward stages.
-Then you can, if required, set up a subscription which will generate a notification when the event is triggered, such as a new tag, or policy/vulnerability update. 
-For example, when a new image has been added to the registry or when Anchore has spotted a new vulnerability, submit a notice to the configured JIRA endpoint.
+Anchore has the capability to watch registries for updates to repositories/tags such as new tags and images. 
+As new images are found, they can be configured to be automatically submitted for SBOM analysis and can later progress to onward stages.
+Then you can, if configured, also set up a subscription which will generate an event notification. This can be sent to an external endpoint for downstream handling.
 
 Let's run through an example:
 
@@ -226,8 +223,7 @@ Output
 │ docker.io/danperry/nocode │ repo_update │ true   │
 └───────────────────────────┴─────────────┴────────┘
 ```
-We can not only watch for new tags as they are pushed into the registry.
-But we can also add a subscription that will trigger an event and downstream notification.
+We can not only watch for new tags as they are pushed into the registry. But we can also add a subscription that will trigger an event and notification.
 ```bash
 anchorectl subscription list
 ```
@@ -285,7 +281,7 @@ Check out the events generated in the Web UI by visiting `/events`
 > [!TIP]
 > If you want to send an event notification from a subscription to an endpoint, please review our [UI Walkthrough](https://docs.anchore.com/current/docs/configuration/notifications/#notifications-ui-walktrough) docs.
 
-Watches and Subscriptions offer many possibilities and combined with notifications, you can start to build very powerful workflows.
+Watches, Subscriptions and downstream notifications offer many possibilities to build very powerful workflows.
 
 ### SBOM Visibility using content hints
 
