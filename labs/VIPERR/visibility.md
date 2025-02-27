@@ -104,22 +104,21 @@ Distributed image analysis can be useful if for example you have the image built
 Furthermore, this can save analysis time as with Centralized mode the Anchore Enterprise Server would need to download the image and then scan.
 However, one thing to note, with Distributed mode you do not get extra analysis or Malware scanning as this can only take place on the server in Centralized mode.
 
-Let's look at some more examples
+Let's look at Distributed and Centralized mode in more detail before continuing:
 
 **Distributed Mode**
 
-Instruct AnchoreCTL to pull an image from the Docker Dameon locally.
+Instruct AnchoreCTL to pull an image from the Docker Dameon and locally analyze.
 ```bash
 anchorectl image add app:v1.0.0 --from docker 
 ```
 
-Instruct AnchoreCTL to pull an image from the registry locally.
+Instruct AnchoreCTL to pull an image from the remote Registry and locally analyze. _(requires local registry auth access)_
 ```bash
 anchorectl image add app:v1.0.0 --from registry 
 ```
-This requires that you have local registry access
 
-Instruct AnchoreCTL to pull an image from a docker archived tar.
+Instruct AnchoreCTL to pull an image from a docker archived tar and locally analyze.
 ```bash
 docker save app:v1.0.0  -o app-v1.0.0.tar
 anchorectl image add app:v1.0.0 --from docker-archive:./app-v1.0.0.tar
@@ -127,12 +126,12 @@ anchorectl image add app:v1.0.0 --from docker-archive:./app-v1.0.0.tar
 
 **Centralized Mode**
 
-Instruct AnchoreCTL to analyze the image tag centrally on the Anchore Enterprise Server
+Instruct AnchoreCTL to analyze the image tag and centrally analyze the Anchore Enterprise Server
 ```bash
 anchorectl image add docker.io/danperry/app:v2.0.0
 ```
 
-**Other options**
+Now we will continue to explore some more options and build and ingest our app:v1.0.0 SBOM.
 
 Instruct AnchoreCTL to set a custom registry, repo and tag name.
 ```bash
@@ -140,33 +139,32 @@ anchorectl image add image.fakehost.com:newapp:v1.0.0 --from docker:app:v1.0.0
 anchorectl image add tar.fakehost.com:newapp:v1.0.0 --from docker-archive:./app-v1.0.0.tar
 ```
 
-Instruct AnchoreCTL to analyze our local app image, but this time add extra metadata, the common Dockerfile build artifact.
+Instruct AnchoreCTL to analyze our local app image, and supplement with the common Dockerfile build artifact.
 ```bash
 anchorectl image add app:v1.0.0 --from docker --dockerfile ./Dockerfile
 ```
-
 Checking the UI for this image you may notice "No results" for the Dockerfile tab under images in the Web UI.
 Anchore is clever when you scan the same image as it notices no differences and therefore will not perform certain scan steps as a result. 
 However, in this case we want to tell Anchore to re analyze the image so that we can pick up and use the newly supplied Dockerfile data.
-We can do this by using --force
-> [!NOTE]
-> --force can be handy in many other use-cases too, lets say you have just enabled malware and now want to rescan and see the results
+We can do this by using a command argument '--force'
+
+Instruct AnchoreCTL to **re-analyze** our local app image, and supplement it with a new Dockerfile build artifact.
 ```bash
 anchorectl image add app:v1.0.0 --from docker --dockerfile ./Dockerfile --force
 ```
-Make note of the digest in the output, we will use this in the next step. 
 
-Finally, let's associate this container image to v1.0.0 of the app in Anchore.
+Finally, using the digest output from the last step, let's associate this container image to v1.0.0 of the app in Anchore.
 ```bash
 anchorectl application artifact add app@v1.0.0 image <retrieved-image-sha>
 ```
 
 Now go and review both the `applications` and `images` sections in the web UI and inspect the app v1 image we added.
 
-Why supply the Dockerfile?
-Simply - It will provide extra data about the image. Anchore does inspect and infer some of the image history using the layers, however this is limited and no substitute for a full Dockerfile.
-Firstly, this allows you to inspect and see the full Dockerfiles contents in the Anchore Enterprise Web UI. Secondly, you can define additional policy rules using Dockerfile policy gates based on your image's Dockerfile. 
-For example, raise a policy violation if my image is exposing port 22 with EXPOSE 22 or the container is running the application with USER root. More details in the policy section.
+> [!NOTE]
+> Why supply the Dockerfile?
+> Simply - It will provide extra data about the image. Anchore does inspect and infer some of the image history using the layers, however this is limited and no substitute for a full Dockerfile.
+> Firstly, this allows you to inspect and see the full Dockerfile contents in the Anchore Enterprise Web UI. Secondly, you can define policy rules based on what is contained in the Dockerfile. 
+> For example, raise a policy violation if my image is exposing port 22 with EXPOSE 22 or the container is running the application with USER root. More details in the policy section.
 
 ### SBOM Visibility of multi-architecture images
 
