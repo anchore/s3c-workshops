@@ -1,6 +1,6 @@
 # S3C Workshops - Software Security in the Real World
 
-This repo offers step-by-step guidance that take you from deploying Anchore Enterprise (version 5.6.2) to a series of specific labs, showcasing how you can utilize Anchore Enterprise to improve security across your software supply chain.
+This repo offers step-by-step guidance that take you from deploying Anchore Enterprise (version 5.17) to a series of specific labs, showcasing how you can utilize Anchore Enterprise to improve security across your software supply chain.
 
 ## Target audience
 

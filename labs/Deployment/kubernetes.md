@@ -17,22 +17,20 @@ apiVersion: kind.x-k8s.io/v1alpha4
 name: anchore
 nodes:
 - role: control-plane
-  image: kindest/node:v1.29.4@sha256:3abb816a5b1061fb15c6e9e60856ec40d56b7b52bcea5f5f1350bc6e2320b6f8
-  extraPortMappings:
-  - containerPort: 80
-    hostPort: 80
-    protocol: TCP
-  - containerPort: 443
-    hostPort: 443
-    protocol: TCP
+  image: kindest/node:v1.31.6@sha256:28b7cbb993dfe093c76641a0c95807637213c9109b761f1d422c2400e22b8e87
 - role: worker
-  image: kindest/node:v1.29.4@sha256:3abb816a5b1061fb15c6e9e60856ec40d56b7b52bcea5f5f1350bc6e2320b6f8
+  image: kindest/node:v1.31.6@sha256:28b7cbb993dfe093c76641a0c95807637213c9109b761f1d422c2400e22b8e87
+  extraPortMappings:
+    - containerPort: 443
+      hostPort: 443
+      listenAddress: 127.0.0.1 
+      protocol: TCP
 EOF
 ```
 
 Ensure kubectl is installed and pointing to your cluster.
 ```bash
-kubectl cluster-info
+kubectl cluster-info --context kind-anchore
 ```
 ```
 Kubernetes control plane is running at https://127.0.0.1:51735
@@ -44,7 +42,7 @@ Create a K8s namespace, which will be used to deploy Anchore Enterprise.
 kubectl create namespace anchore
 ```
 Store your License, DockerHub and Anchore Credentials as Kubernetes Secrets. These will be used by your Anchore Deployment.
-_Be sure to change <your-docker-username> and <your-docker-password> to those you were supplied._
+_Be sure to change <your-docker-username> and <your-docker-password> to those you were supplied by the google form._
 ```bash
 cd ./labs/Deployment
 
@@ -64,10 +62,32 @@ kubectl create secret generic anchore-enterprise-ui-env \
 --from-literal=ANCHORE_REDIS_URI=redis://:anchore-redis,123@anchore-ui-redis-master:6379 -n anchore
 ```
 
-Run Helm install to spin up Anchore Enterprise.
+Run Helm install to spin up Anchore Enterprise (5.17)
 ```bash
 helm repo add anchore https://charts.anchore.io
-helm install -n anchore anchore anchore/enterprise -f values.yaml --version 3.2.0 # 5.12.0
+helm upgrade --install --namespace anchore anchore anchore/enterprise --version 3.7.0 -f - <<EOF
+  useExistingSecrets: true
+  existingSecretName: anchore-enterprise-env
+
+  postgresql:
+    chartEnabled: true
+    externalEndpoint: "anchore-postgresql"
+  anchoreConfig:
+    policy_engine:
+      vulnerabilities:
+        matching:
+          exclude:
+            providers: []
+            package_types: []
+    analyzer:
+      layer_cache_max_gigabytes: 5
+      enable_hints: true
+      configFile:
+        malware:
+          clamav:
+            enabled: true
+            db_update_enabled: true
+EOF
 ```
 
 Run port forwarding to get access to the Anchore Enterprise Web UI.
