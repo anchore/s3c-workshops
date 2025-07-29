@@ -7,8 +7,7 @@
 
 ## Setup
 
-1. Follow the [installation instructions](https://sites.google.com/anchore.com/anchore-enterprise-trial) included in the free trial email.
-2. Review [launching the trial](https://sites.google.com/anchore.com/anchore-enterprise-trial#h.ddctetfymxlt) and [accessing the trial](https://sites.google.com/anchore.com/anchore-enterprise-trial#h.ddctetfymxlt) on how to access the Anchore Enterprise UI and login.
+1. Follow the installation instructions included in the free trial email.
 
 ## Next Step
 
