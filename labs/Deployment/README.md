@@ -8,10 +8,10 @@ _**The deployment in this tutorial is not production ready, and will receive lim
 1. Download this repo and move to the `Deployment` directory.
 2. Retrieve your Anchore license file and DockerHub login credentials.
    1. To obtain these, fill out a [form](https://forms.gle/NMhpVU19SuXRnLhC9) for instant access.
+   2. Alternatively contact sales for a supported [Free Trial](https://go.anchore.com/free-trial/)
 3. Pick a deployment target and deploy Anchore Enterprise.
    1. Deploy using [Docker Compose](./docker-compose.md)
    2. Deploy using [Kubernetes](./kubernetes.md)
-   3. Deploy using [AWS Anchore Free Trial](./aws-free-trial.md)
 4. Install AnchoreCTL the Anchore Enterprise Command Line Interface.
    1. Download & Install [AnchoreCTL](./anchorectl.md)
 5. [Pick a lab](../../README.md#labs) to test your new Deployment and learn more.
