@@ -8,7 +8,7 @@ _**The deployment in this tutorial is not production ready, and will receive lim
 1. Download this repo and move to the `Deployment` directory.
 2. Retrieve your Anchore license file and DockerHub login credentials.
    1. To obtain these, fill out a [form](https://forms.gle/NMhpVU19SuXRnLhC9) for instant access.
-   2. Alternatively contact sales for a supported [Free Trial](./free-trial.md)
+   2. Alternatively contact sales for a supported [Free Trial](https://go.anchore.com/free-trial/)
 3. Pick a deployment target and deploy Anchore Enterprise.
    1. Deploy using [Docker Compose](./docker-compose.md)
    2. Deploy using [Kubernetes](./kubernetes.md)
