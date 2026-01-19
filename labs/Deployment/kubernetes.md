@@ -62,10 +62,10 @@ kubectl create secret generic anchore-enterprise-ui-env \
 --from-literal=ANCHORE_REDIS_URI=redis://:anchore-redis,123@anchore-ui-redis-master:6379 -n anchore
 ```
 
-Run Helm install to spin up Anchore Enterprise (5.17)
+Run Helm install to spin up Anchore Enterprise (5.24.1)
 ```bash
 helm repo add anchore https://charts.anchore.io
-helm upgrade --install --namespace anchore anchore anchore/enterprise --version 3.7.0 -f - <<EOF
+helm upgrade --install --namespace anchore anchore anchore/enterprise --version 3.20.3 -f - <<EOF
   useExistingSecrets: true
   existingSecretName: anchore-enterprise-env
 
