@@ -1,0 +1,18 @@
+apiVersion: 1
+datasources:
+  - access: proxy
+    basicAuth: false
+    database: ''
+    id: 1
+    isDefault: true
+    jsonData:
+      httpMethod: POST
+    name: prometheus
+    orgId: 1
+    readOnly: false
+    type: prometheus
+    typeLogoUrl: public/app/plugins/datasource/prometheus/img/prometheus_logo.svg
+    typeName: Prometheus
+    uid: ddpsargv3rx8gb
+    url: http://prometheus:9090
+    user: ''
