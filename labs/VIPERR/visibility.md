@@ -13,7 +13,7 @@ In Enterprise 6.0 this data is organised around three concepts:
 
 ## How this lab module is structured
 
-Everyone walks through the same six phases:
+This module will walk you through the following tasks or activities: 
 
 1. **Define the application and a version** — the container that everything else attaches to.
 2. **Import an SBOM as an asset** — use a bundled SPDX SBOM that represents an externally-produced hand-off.
