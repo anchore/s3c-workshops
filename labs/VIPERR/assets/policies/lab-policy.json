@@ -1,0 +1,53 @@
+{
+  "id": "viperr-lab-policy",
+  "name": "VIPERR Lab Policy",
+  "description": "Stop on any Critical vulnerability, stop on any CISA KEV match, warn on High vulnerabilities that already have a fix available.",
+  "version": "2",
+  "rule_sets": [
+    {
+      "id": "vuln-rules",
+      "name": "Vulnerability rules",
+      "version": "2",
+      "rules": [
+        {
+          "id": "stop-on-critical",
+          "gate": "vulnerabilities",
+          "trigger": "package",
+          "action": "stop",
+          "description": "Stop the build if any package has a Critical-severity vulnerability.",
+          "params": [
+            {"name": "package_type", "value": "all"},
+            {"name": "severity_comparison", "value": ">="},
+            {"name": "severity", "value": "critical"}
+          ]
+        },
+        {
+          "id": "warn-high-with-fix",
+          "gate": "vulnerabilities",
+          "trigger": "package",
+          "action": "warn",
+          "description": "Warn when a High-severity vulnerability already has a fix available — these are the easy wins.",
+          "params": [
+            {"name": "package_type", "value": "all"},
+            {"name": "severity_comparison", "value": "="},
+            {"name": "severity", "value": "high"},
+            {"name": "fix_available", "value": "true"}
+          ]
+        },
+        {
+          "id": "stop-on-kev",
+          "gate": "vulnerabilities",
+          "trigger": "package",
+          "action": "stop",
+          "description": "Stop on any vulnerability listed in the CISA Known Exploited Vulnerabilities catalog, regardless of severity.",
+          "params": [
+            {"name": "package_type", "value": "all"},
+            {"name": "known_exploited_vulnerability", "value": "true"}
+          ]
+        }
+      ]
+    }
+  ],
+  "allowlists": [],
+  "sbom_mappings": []
+}
