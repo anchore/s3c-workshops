@@ -1,208 +1,275 @@
 # Policy Enforcement
 
-Enforce compliance with external and/or internal standards.
+The Inspection module gave you a way to *see* the vulnerabilities and packages across `app@v1.0.0`. Policy enforcement is how you turn that data into a pass/fail signal for releases — codifying the rules your organisation already has ("never ship a Critical", "never ship a CISA-listed exploited vulnerability", "Highs are OK if a fix exists, but log them") into something Anchore Enterprise evaluates automatically every time the version changes.
 
-Facilitating everything from policy creation to policy enforcement can help meet compliance goals and importantly prioritize your efforts without crippling developer velocity.
+In Anchore Enterprise 6.0 a **policy** is a JSON bundle of rules. Each rule names a **gate** (the kind of check), a **trigger** (the specific condition), an **action** (`stop`, `warn`, `go`), and **parameters** (the threshold). The bundle is bound to your application; evaluation runs against the version's deduplicated assets and produces a per-rule list of findings.
 
-Anchore Enterprise enables users to define automated rules that indicate which vulnerabilities violate their organizations’ policies or work against compliance goals.
-For example, an organization may raise policy violations for vulnerabilities scored as Critical or High that have a fix available.
-These policy violations can generate alerts and notifications or be used to stop builds in the CI/CD pipeline or prevent code from moving to production.
-Policy enforcement can be applied at any stage in the development process, from the selection and usage of open source components through the build, staging, and deployment process, here are our top 10 uses:
+> [!IMPORTANT]
+> This module assumes you completed the [Visibility module](visibility.md) and the [Inspection module](inspection.md). It uses the same `app`, `v1.0.0` version, the four assets attached to it, and the VEX annotation you recorded against `CVE-2019-10906` in `Jinja2 2.10`.
 
-1. Policy alerts and enforces for malware findings
-2. Create a policy that doesn't cripple velocity
-3. Enforce control of license abuse/misuse via Policy
-4. Enforce secret + password monitoring in Policy
-5. Policy checks for known exploited vulnerabilities across SDLC
-6. Enforce building from approved images
-7. Detect & Block misconfigurations in images
-8. Policy blocks unauthorized software reaching kubernetes
-9. Policy blocks unauthorized images reaching registry
-10. Don’t pass builds that violate CVE thresholds
+> [!NOTE]
+> **Alpha-state caveat:** in 6.0 alpha the only ported gate is `vulnerabilities` (with three triggers — `package`, `denylist`, `stale_feed_data`) plus a small `always` gate used internally. v5.x had many more gates (Dockerfile, files, secrets, malware, packages, …); those are expected back as 6.0 progresses. Everything in this module is built around the gate that's available today and applies cleanly to the broader gate set when it lands.
 
-## Lab Exercises
+## How this lab module is structured
 
-Once an image has been analyzed and its content has been discovered, categorized, and processed, the results can be evaluated against a user-defined set of checks to give a final pass/fail recommendation for an image. Anchore Enterprise policies are how users describe which checks to perform on what images and how the results should be interpreted.
+Six phases, fully sequential:
 
-A policy is made up from a set of rules that are used to perform an evaluation of a container image. The rules can define checks against an image for things such as:
+1. **Understand the policy model** — bundles, rule sets, gates, triggers, allowlists, app-level binding.
+2. **Survey the policies on the system** — list and read what's already loaded.
+3. **Author and import a custom policy** — bring your organisation's rules in via JSON.
+4. **Bind the policy to your application** — make it the active policy for `app`.
+5. **Evaluate `v1.0.0` and read the findings** — see what passes, what stops, what warns.
+6. **Suppress with VEX, then export the compliance report** — round-trip from the Inspection module's VEX into a policy outcome.
 
-- Security vulnerabilities
-- Package allowlists and denylists
-- Configuration file contents
-- Presence of credentials in image
-- Image manifest changes
-- Exposed ports
+## Phase 1 — Understand the policy model
 
-### Policy Enforcement - creation & management of policies
+A policy bundle is a JSON document with three parts that matter for this module:
 
-Anchore comes with some policies out of the box and you can create a flexible policy yourself to build a policy enforcement strategy that works for you.
-These are stored as json files and can be moved / shared between Anchore deployments too.
+| Part | What it does |
+|---|---|
+| `rule_sets` | One or more named groups of rules. Each rule names a `gate`, a `trigger`, an `action` (`stop`, `warn`, `go`), and a list of `params`. Rule sets are evaluated against assets attached to a version. |
+| `allowlists` | Items that suppress specific findings *inside the policy itself* — usually by `(gate, trigger_id)` with an optional expiry. Useful for blanket exceptions that should travel with the policy bundle. |
+| `sbom_mappings` | Which rule sets and allowlists apply to which artifacts. In simple deployments you'll have one mapping covering everything; large deployments use mappings to apply different rule sets to different SBOM names/versions. |
 
-Anchore also has prebuilt policy bundles to offer, that meet a [wide range](https://docs.anchore.com/current/docs/overview/capabilities/#anchore-enterprise-policy-packs) of compliance measures such as NIST, FedRAMP, SSDF and many more.
+> [!NOTE]
+> Policy bundles in 6.0 alpha are stored and managed by the v5 catalog (under `anchorectl policy …`). Anchore Enterprise's component_catalog service reads a bundle from there, parses it into the v6 model, and runs evaluation against the asset model. v5 field names (`whitelists`, `policies`) are auto-aliased to v6 names (`allowlists`, `rule_sets`), so existing bundles import unchanged.
 
-To understand Anchore policies, rules (triggers and gates), mappings, allow lists and more, please review our detailed [UI policies guide](https://docs.anchore.com/current/docs/compliance_management/policy_overview_ui/).
+**Binding.** A policy applies to an application either through:
 
-We can switch to inspecting the current policies in place with the following anchorectl commands.
+- **App-level binding** — a specific policy ID is set on the application via `anchorectl app update <app> --policy-id <id>`. This wins over the account default.
+- **Account-level activation** — `anchorectl policy activate <id>` marks one policy as the account's default. Applications without their own policy fall back to it.
+
+**Outcomes.** Every rule produces zero or more findings. The version-level outcome is the most severe action that fired:
+
+- `stop` → the version fails policy.
+- `warn` → the version passes with warnings.
+- nothing fired → the version passes cleanly.
+
+## Phase 2 — Survey the policies on the system
+
+Before authoring our own bundle, see what's already loaded. Anchore Enterprise ships several reference policies you can use as-is or as a starting point:
+
 ```bash
 anchorectl policy list
 ```
-Output
-```
-┌─────────────────────────┬──────────────────────────────────────┬────────┬──────────────────────┐
-│ NAME                    │ POLICY ID                            │ ACTIVE │ UPDATED              │
-├─────────────────────────┼──────────────────────────────────────┼────────┼──────────────────────┤
-│ anchore_security_only   │ anchore_security_only                │ false  │ 2024-03-08T09:38:50Z │
-│ Default policy          │ 2c53a13c-1765-11e8-82ef-23527761d060 │ false  │ 2024-03-12T19:55:05Z │
-│ anchore_cis_1.13.0_base │ anchore_cis_1.13.0_base              │ true   │ 2024-03-14T12:25:11Z │
-└─────────────────────────┴──────────────────────────────────────┴────────┴──────────────────────┘
-```
-As you can see only the CIS one is active.
 
-Let's activate the default policy as this has checks for source code.
+Output (truncated):
+
+```
+ ✔ List policy
+┌──────────────────────────────────────┬─────────────────────────────────┬────────┬──────────────────────┐
+│ POLICY ID                            │ NAME                            │ ACTIVE │ LAST UPDATED         │
+├──────────────────────────────────────┼─────────────────────────────────┼────────┼──────────────────────┤
+│ anchore_security_only                │ Anchore Security Only           │ false  │ 2026-04-21T00:00:00Z │
+│ anchore_default_policy               │ Default policy                  │ true   │ 2026-04-21T00:00:00Z │
+│ anchore_cis_1.13.0_base              │ Anchore CIS 1.13.0 base         │ false  │ 2026-04-21T00:00:00Z │
+└──────────────────────────────────────┴─────────────────────────────────┴────────┴──────────────────────┘
+```
+
+Any of these can serve as a starting point — the security-only and CIS bundles are common templates customers extend. For the rest of this module we'll author our own from scratch so you see exactly what goes into a bundle.
+
+## Phase 3 — Author and import a custom policy
+
+For the rest of the module we'll use a small custom policy bundled at `./assets/policies/lab-policy.json`. Open it and you'll see three rules in one rule set, all on the `vulnerabilities` gate:
+
+| Rule ID | Gate / trigger | Action | What it fires on |
+|---|---|---|---|
+| `stop-on-critical` | `vulnerabilities / package` | `stop` | Any package with a Critical-severity match. |
+| `warn-high-with-fix` | `vulnerabilities / package` | `warn` | High-severity matches that already have a fix available — easy wins, surfaced but not blocking. |
+| `stop-on-kev` | `vulnerabilities / package` | `stop` | Any vulnerability in the CISA Known Exploited Vulnerabilities catalog, regardless of severity. |
+
+Each rule is a small object:
+
+```json
+{
+  "id": "stop-on-critical",
+  "gate": "vulnerabilities",
+  "trigger": "package",
+  "action": "stop",
+  "params": [
+    {"name": "package_type",        "value": "all"},
+    {"name": "severity_comparison", "value": ">="},
+    {"name": "severity",            "value": "critical"}
+  ]
+}
+```
+
+The `vulnerabilities / package` trigger has a rich set of parameters available — `severity_comparison` (`=`, `!=`, `<`, `>`, `<=`, `>=`), CVSS v3 base/exploitability/impact comparisons and thresholds, EPSS score and percentile comparisons, `fix_available`, `vendor_only`, `max_days_since_creation`, `max_days_since_fix`, and `known_exploited_vulnerability` (the KEV flag). The bundle in `lab-policy.json` only uses three; build your real policies up from these primitives.
+
+Import the bundle:
+
 ```bash
-anchorectl policy activate 2c53a13c-1765-11e8-82ef-23527761d060
+anchorectl policy add --input ./assets/policies/lab-policy.json
 ```
-Output
+
+Output:
+
 ```
-Name: Default policy
-Policy Id: 2c53a13c-1765-11e8-82ef-23527761d060
-Active: true
-Updated: 2024-03-17T15:18:33Z
+ ✔ Added policy
+Policy Id: viperr-lab-policy
+Name: VIPERR Lab Policy
+Active: false
 ```
-Now go review the policy compliance page for your images in the Web UI.
 
-### Policy Enforcement and use cases 
+Confirm it's now in the catalog:
 
-Anchore Enterprise provides a mechanism to compare the policy checks and security vulnerabilities of an image with those of a base image. This allows you to 
-- filter out results that are inherited from a base image and focus on the results relevant to the application image
-- reverse the focus and examine the base image for policy check violations and vulnerabilities which could be a deciding factor in choosing the base image for the application
-
-Additionally, another way to view policy enforcement, is to accept a risk, and allow either a CVE or Image to pass through policy checks.
-This is only suitable for some use cases, however it does allow you to continue shipping your code AND have that exception logged.
-
-Here are some guides on how both of these work
-- https://docs.anchore.com/current/docs/compliance_management/policy_overview_ui/allowlists/
-- https://docs.anchore.com/current/docs/compliance_management/policy_overview_ui/allowed_denied_images/
-
-### Policy Enforcement and integration with CI/CD
-
-Anchore Enterprise provides the building blocks for you to integrate with your chosen pipeline tooling.
-In many cases, you will want to retrieve vulnerabilities or policy compliance data in order to make decisions and 'shift-left' and flag the outcomes to the Engineer.
-
-We now turn to some examples to illustrate some of the features required.
-
-When adding an image for example after building it in a pipeline, the iamage will be queued to be analyzed.
-Let's add a new image as an example BUT wait for the analysis to complete using `--wait` 
 ```bash
-anchorectl image add docker.io/nginx:latest --wait
+anchorectl policy list
 ```
-You can fetch and store all results to a local directory. Useful if you want to store the results in your CI/CD tooling.
-```bash
-anchorectl image add docker.io/library/nginx:latest --get all=./tmp/app
-```
-To apply the active policy bundle and SEE all the policy violations:
-```bash
-anchorectl image check docker.io/centos:latest --detail
-```
-To apply the active policy bundle and get a simple pass/fail check result:
-```bash
-anchorectl image check -f docker.io/app:v2.0.0
-```
-Output
-```
-Tag: docker.io/app:v2.0.0
-Digest: sha256:f691c18fc3a6ee3884f68d8d65930585b3456b5d64483829bebc6b619e182a5a
-Policy ID: 1f6ff4dc-da3c-4299-b2bf-56d2344f6f2d
-Last Evaluation: 2024-03-17T16:05:20Z
-Evaluation: fail
-Final Action: stop
-Reason: policy_evaluation
-error: 1 error occurred:
-	* failed policies:
-```
-> [!IMPORTANT]
-> This sets the exit code to 1 if the policy evaluation result is "fail" (useful for breaking pipelines as a gating mechanism)
 
-Below is what a pass with warn looks like (I used a loose policy to let the checks only flag a warn). 
-No need to replicate. If you want to replicate, create a new policy, add a ruleset that will trigger a warn.
-Then either make the policy active or supply the -p argument along with your chosen policy.
-```bash
-anchorectl image check -f docker.io/app:v2.0.0 -p <my-policy-id>
-```
-Output
-```
-Tag: docker.io/app:v2.0.0
-Digest: sha256:f691c18fc3a6ee3884f68d8d65930585b3456b5d64483829bebc6b619e182a5a
-Policy ID: 1f6ff4dc-da3c-4299-b2bf-56d2344f6f2d
-Last Evaluation: 2024-03-26T10:24:11Z
-Evaluation: pass
-Final Action: warn
-Reason: policy_evaluation
-```
-Incidentally, its worth mentioning that currently you can only have one policy active in an Anchore account. 
-However, by using the -p flag you can point to use another policy. Useful for checking a new policy.
-Bear in mind that whilst the right policy checks are made on this call. The default is still set to another policy.
+You should see `viperr-lab-policy` in the table alongside the reference policies from Phase 2.
 
 > [!TIP]
-> It is recommended to use the specific image digest rather than image tag when performing an 'anchorectl image check'
+> To iterate on the bundle, edit the JSON locally and re-import with `anchorectl policy update --input ./assets/policies/lab-policy.json`. Policy IDs are stable across updates; the rule set bodies and allowlists get replaced.
 
-Finally, here is an outline of what needs to happen in essentially in all the CI/CD tools:
+## Phase 4 — Bind the policy to your application
+
+Two ways to make `viperr-lab-policy` the policy that gets evaluated against `app`:
+
+**Option A — App-level binding (preferred):** set the policy on the application directly. This is the explicit, traceable choice — the policy travels with the app record and is visible in `app get`.
+
 ```bash
-# Setup the anchorectl in the pipeline environment
-mkdir -p ${HOME}/.local/bin
-curl -sSfL  https://anchorectl-releases.anchore.io/anchorectl/install.sh  | sh -s -- -b $HOME/.local/bin  
-export PATH="${HOME}/.local/bin/:${PATH}"
-
-# Foreach commit map your source code to an application version (used later to track sboms)
-anchorectl syft --source-name app --source-version HEAD -o json . | anchorectl source add github.com/anchore/webinar-demo@73522db08db1758c251ad714696d3120ac9b55f4 --from -
-
-# Do whatever normal image build steps you would do here
-# ...
-
-# Next map the container artifact to the application release version (used for SBOM tracking)
-anchorectl application artifact add app@v2.0.0 image <retrieved-image-sha-from-build-step>
-
-# Now begin the analysis and evaluation of the image
-anchorectl image add --wait ${IMAGE_NAME}
-anchorectl image vulnerabilities ${IMAGE_NAME}
-anchorectl image check -f --detail ${IMAGE_NAME}
-# or
-anchorectl image check -f -t ${IMAGE_NAME}
-# Now if the image passed the policy check on the previous line, we can
-# Continue our pipeline (e.g. push to QA, promote image to another registry, etc).
+anchorectl app update app --policy-id viperr-lab-policy
 ```
-Most capabilities are exposed via the AnchoreCTL but all of them are exposed via the API that has a 100% coverage.
-If that is more suitable for you in your CI/CD tooling.
 
-### Policy Enforcement and a custom policy
+Verify:
 
-Let's now create our own, using the example policy json stored in the examples directory
 ```bash
-anchorectl policy add --input examples/lab-policy-example.json
+anchorectl app get app -o json | jq '{name, active_policy_id}'
 ```
-TODO - Finish adding policy example
 
-### Policy Enforcement with the runtime inventory
+**Option B — Account-level activation:** make `viperr-lab-policy` the account default. Apps without their own `policy-id` will use it.
 
-To set up and get inventory details from your clusters please review - https://docs.anchore.com/current/docs/integration/kubernetes/runtime/#deployment
+```bash
+anchorectl policy activate viperr-lab-policy
+```
 
-> [!IMPORTANT]
-> Whilst we support ECS Clusters. We do not currently show any ECS results in the web ui. Instead, you must use `anchorectl inventory list`
+For this module use **Option A** — it makes the binding explicit and lets the existing account default keep applying to anything else.
 
-TODO - Finish adding example
+> [!NOTE]
+> Changing the active policy doesn't re-evaluate prior versions on its own. Existing `app version policy status get` results were produced against the policy that was active *at the time of evaluation*; the next evaluation cycle will use the new binding.
 
-### Policy Enforcement with the Kubernetes admission controller
+## Phase 5 — Evaluate `v1.0.0` and read the findings
 
-This controller is based on the openshift generic admission controller and implements a Kubernetes Dynamic Webhook controller for interacting with Anchore and making admission decisions based image properties as determined during analysis and subsequent Anchore Enterprise policy review.
+Anchore Enterprise evaluates policy as an asynchronous job — like SBOM ingest and image analysis. There's no anchorectl `policy evaluate` command in 6.0 alpha yet, so we trigger the evaluation by calling the API directly and then read the results with the CLI.
 
-The Anchore admission controller supports 3 different modes of operation allowing you to tune tradeoff between control and intrusiveness for your environments.
+```bash
+APP_ID=$(anchorectl app get app -o id)
+VERSION_ID=$(anchorectl app version get v1.0.0 --app app -o id)
 
-- Strict Policy-Based Admission Gating Mode
-- Analysis-Based Admission Gating Mode
-- Passive Analysis Trigger Mode
+curl -sS -X POST \
+  -H "Content-Type: application/json" \
+  -u "${ANCHORECTL_USERNAME}:${ANCHORECTL_PASSWORD}" \
+  -H "x-anchore-account: admin" \
+  "${ANCHORECTL_URL}/v2/apps/${APP_ID}/jobs/evaluate-policy" \
+  -d "{\"app_version_id\": \"${VERSION_ID}\"}"
+```
 
-To learn more about deployment, configuration and usage please review the [integration repo](https://github.com/anchore/kubernetes-admission-controller) in GitHb.
+The response contains a job ID. Track it like any other v6 job:
 
-## Next Lab
+```bash
+anchorectl app job list app --status processing
+anchorectl app job list app --status complete
+```
 
-Next: [Remediation](remediation.md)
+Once the evaluate-policy job finishes, fetch the version-level outcome:
+
+```bash
+anchorectl app version policy status get v1.0.0 --app app
+```
+
+Output:
+
+```
+ ✔ Got policy status
+Status: fail
+Last Evaluated: 2026-05-07T09:42:11Z
+Policy ID: viperr-lab-policy
+Policy Digest: sha256:a4f9…
+```
+
+`Status: fail` means at least one `stop` rule fired. To see *which* rules fired and on *which* findings, list the findings:
+
+```bash
+anchorectl app version policy findings list v1.0.0 --app app
+```
+
+Output (truncated):
+
+```
+ ✔ List findings
+┌──────────────────┬──────┬────────────────┬───────────┬─────────────┬──────────────────────────────────────────────┐
+│ RULE             │ ACTION│ VULNERABILITY  │ PACKAGE   │ ASSET       │ DETAIL                                       │
+├──────────────────┼──────┼────────────────┼───────────┼─────────────┼──────────────────────────────────────────────┤
+│ stop-on-critical │ stop │ CVE-2021-44228 │ log4j-core│ my-java-app │ Critical, fix 2.15.0 available, KEV          │
+│ stop-on-critical │ stop │ CVE-2020-14343 │ PyYAML    │ my-python-…│ Critical, fix 5.4 available                  │
+│ stop-on-kev      │ stop │ CVE-2021-44228 │ log4j-core│ my-java-app │ Listed in CISA KEV catalog                   │
+│ warn-high-with-… │ warn │ CVE-2018-18074 │ requests  │ my-python-…│ High, fix 2.20.0 available                   │
+│ warn-high-with-… │ warn │ CVE-2019-10906 │ Jinja2    │ my-python-…│ High, fix 2.10.1 available                   │
+│ ...              │ ...  │ ...            │ ...       │ ...         │ ...                                          │
+└──────────────────┴──────┴────────────────┴───────────┴─────────────┴──────────────────────────────────────────────┘
+```
+
+Each finding cites the rule that fired, the action, the vulnerability, the package, and which asset contributed the package. JSON output gives you the full detail blob (CVSS, EPSS, fix info, the `vex_status` if any) per finding:
+
+```bash
+anchorectl app version policy findings list v1.0.0 --app app -o json \
+  | jq '.[] | select(.action == "stop") | {rule_id, vulnerability_id, package_name, package_version, asset_name}'
+```
+
+> [!TIP]
+> `findings list` is paginated under the hood — for a large deployment, prefer `-o json` and process programmatically. The CSV export in Phase 6 is the right shape for hand-off to a security team or GRC tool.
+
+## Phase 6 — Suppress with VEX, then export the compliance report
+
+In the Inspection module you marked `CVE-2019-10906` in `Jinja2 2.10` as `not_affected / vulnerable_code_not_in_execute_path` — recording that the vulnerable code path isn't reachable in the demo Python app. Policy evaluation is VEX-aware: a `not_affected` annotation suppresses the matching finding so a triaged-and-justified vulnerability doesn't keep failing your pipeline.
+
+Re-trigger the evaluation (same `curl` call as Phase 5) and re-list the findings:
+
+```bash
+anchorectl app version policy findings list v1.0.0 --app app -o json \
+  | jq '.[] | select(.vulnerability_id == "CVE-2019-10906")'
+```
+
+The result is empty — the rule didn't fire on that match because the VEX annotation marked it as `not_affected`. Other High-with-fix findings still surface (we didn't VEX them); only the one you explicitly triaged was suppressed.
+
+> [!NOTE]
+> Allowlists in the policy bundle (`allowlists` field) and VEX annotations on the version both suppress findings, but they're for different purposes. **Use allowlists** for blanket, policy-wide exceptions that travel with the bundle ("we never fail on this one CVE in this one trigger"). **Use VEX annotations** for per-version, evidence-backed `not_affected` decisions with justifications. The Remediation module covers when to reach for each.
+
+Finally, export the compliance report — the canonical artifact for an audit, a ticket attachment, or a ship/no-ship review:
+
+```bash
+anchorectl app version export policy-compliance v1.0.0 \
+  --app app \
+  --file ./app-v1.0.0-policy-compliance.csv
+```
+
+The CSV has one row per finding, with rule, action, vulnerability, package, asset, fix info, and any VEX status — the same data the `findings list` command returns, in a format every tool downstream knows how to read.
+
+## Recap
+
+You walked the full policy enforcement loop for `app@v1.0.0`:
+
+1. Saw what a 6.0 **policy bundle** is — rule sets, gates, triggers, allowlists, mappings — and how it binds to applications.
+2. Surveyed the **policies already on the system** with `policy list / get`.
+3. Authored and imported your own bundle (`viperr-lab-policy`) with three rules on the vulnerabilities gate.
+4. **Bound** it to `app` via `app update --policy-id`.
+5. Triggered an **evaluation**, read the version-level **status**, and inspected the per-rule **findings**.
+6. Saw a **VEX annotation suppress** a finding without changing the policy itself, and exported the **compliance report** as CSV.
+
+Useful 5.x → 6.0 mappings:
+
+| 5.x                                        | 6.0                                                                  |
+|--------------------------------------------|----------------------------------------------------------------------|
+| `image check <image> --detail`             | `app version policy findings list <version> --app <app>`             |
+| `image check -f <image>` (exit on fail)    | `app version policy status get <version> --app <app>` + your own gating script |
+| `image check -p <policy-id>`               | `app update <app> --policy-id <id>` then evaluate                    |
+| Policy bundle JSON (`whitelists`, `policies`) | Same JSON; v5 names auto-aliased to `allowlists` / `rule_sets`     |
+| `policy add/get/list/update/activate`      | Unchanged — still managed via the v5 catalog                          |
+| Allowlists (in-bundle) for waivers         | Allowlists *or* VEX annotations (`app version vex …`) per-version    |
+
+**CI/CD pattern.** A pipeline gate is the same shape as the manual flow: ingest your assets (Visibility), call `POST /jobs/evaluate-policy`, poll `app job` until complete, then read `app version policy status get -o id`. Treat `Status: fail` as exit-1 to break the build. The VIPERR Remediation module covers feeding the resulting findings back to developers via webhook, Slack, or issue tracker.
+
+## Next Module
+
+Next: [Remediation](remediation.md) — closing the loop from "we found something" to "we did something about it."

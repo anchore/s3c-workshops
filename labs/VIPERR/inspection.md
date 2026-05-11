@@ -1,309 +1,344 @@
 # Inspection
 
-Security checks inspecting for vulnerabilities, secrets, permissions, and malware.
+The Visibility module gave you four assets attached to `app@v1.0.0`: a Java application SBOM, a centrally-analyzed Postgres image, a locally-analyzed Ubuntu image, and a filesystem scan of a Python application. Now we turn that inventory into something actionable — vulnerabilities, packages, prioritisation signals, and triage decisions.
 
-In the previous lab, we looked into the SBOM capability as a vital foundation for gaining visibility into our software and containers. 
-In this lab, we will explore deeper and inspect this data to uncover useful information that can aid compliance and/or security.
-To achieve this, you need vulnerability feed data, and for this we briefly touch on how feed source information is gathered and made available to enrich the SBOMs.
-Just like SBOM data, vulnerability data is foundational and without it, you won't have accurate data to make informed decisions.
+In Anchore Enterprise 6.0, vulnerability data is presented at the **app version** level. Anchore Enterprise takes the package inventory from every asset attached to a version, deduplicates it, matches it against vulnerability data, and gives you one consolidated picture for the release. You can still pivot down to a single asset when you need to, but the version-level view is the primary lens.
 
-Inspecting the results of SBOMs and vulnerabilities across source applications and containers can help you identify many issues, here are our top 10:
+> [!IMPORTANT]
+> This module assumes you completed the [Visibility module](visibility.md) — it uses the same `app`, `v1.0.0` version, and the four assets attached to it. If you haven't worked through Visibility yet, do that first.
 
-1. Inspect files for malicious content
-2. Inspect packages for malicious content
-3. Analyze each vulnerability to gather sufficient information about risk to plan its remediation
-4. Inspect for license abuse/misuse
-5. Inspect source code repos for vulns
-6. Inspect & monitor file permissions
-7. Inspect for misconfiguration in the Dockerfiles
-8. Detect known exploited vulnerabilities
-9. Inspect for vulns inherited by base images
-10. Inspect relational analysis to identify vulns across images and stages
+## How this lab module is structured
 
-## Lab Exercises
+Six phases, fully sequential:
 
-### Inspection of feed sources
-Anchore Enterprise utilizes a number of security datasets and vulnerability data from a number of different sources from NVD to more specific sources.
-The Anchore Data Syncer Service downloads the latest vulnerability data, which in turn is used to map found packages and software to known vulnerabilities.
+1. **Understand the data foundation** — feeds, namespaces, and the enrichment data (KEV, EPSS, CVSS) Anchore Enterprise uses to prioritise findings.
+2. **List vulnerabilities at the version level** — get the consolidated view across all four assets.
+3. **Filter and prioritise** — use `jq` against the JSON output to slice by severity, fix availability, KEV, and EPSS.
+4. **Drill into a specific asset** — pull the original SBOM and inspect asset-specific metadata.
+5. **Triage with VEX annotations** — record `not_affected` decisions on vulnerabilities you've reviewed.
+6. **Export for downstream tools** — CSV vulnerability reports, CycloneDX VEX, and CSV package inventories.
 
-Anchore prefers to use the most specific data to enable the best possible vulnerability findings. For example, whilst a general CVSS score from NVD might apply to a particular version of Bash, the way an OS vendor like Ubuntu installs Bash could result in a different often reduced rating.
-Having up to date, relevant and specific vulnerability data is paramount. In combination with accurate SBOMs, the correctness of vulnerability data helps steer you away from false positives and false negatives and get you the insights about the software that you need.
+## Phase 1 — Understand the data foundation
 
-Let's first check what vulnerability data we have in our new deployment. When first deployed it can take several minutes for the Data Syncer to download the latest data.
+Anchore Enterprise matches the packages in your assets against vulnerability data sourced from many feeds. The accuracy of every vuln finding depends on the quality and freshness of those feeds, and on Anchore Enterprise picking the *most specific* feed for each package.
+
+List the feeds Anchore Enterprise currently has loaded:
+
 ```bash
 anchorectl feed list
 ```
-Output
+
+Output (truncated):
+
 ```
  ✔ List feed
 ┌─────────────────────────────────────────────────┬────────────────────┬─────────┬──────────────────────┬──────────────┐
 │ FEED                                            │ GROUP              │ ENABLED │ LAST UPDATED         │ RECORD COUNT │
 ├─────────────────────────────────────────────────┼────────────────────┼─────────┼──────────────────────┼──────────────┤
-│ ClamAV Malware Database                         │ clamav_db          │ true    │ 2024-12-12T06:06:35Z │ 1            │
-│ CISA Known Exploitable Vulnerabilities Database │ kev_db             │ true    │ 2024-12-12T06:08:08Z │ 1228         │
-│ Exploit Prediction Scoring System Database      │ epss_db            │ true    │ 2024-12-12T06:04:42Z │ 269687       │
-│ Vulnerabilities                                 │ github:composer    │ true    │ 2024-12-12T06:13:36Z │ 4216         │
-│ Vulnerabilities                                 │ github:dart        │ true    │ 2024-12-12T06:13:36Z │ 10           │
-│ Vulnerabilities                                 │ github:gem         │ true    │ 2024-12-12T06:13:36Z │ 839          │
-│ Vulnerabilities                                 │ github:go          │ true    │ 2024-12-12T06:13:36Z │ 1991         │
-│ Vulnerabilities                                 │ github:java        │ true    │ 2024-12-12T06:13:36Z │ 5154         │
-...
-│ Vulnerabilities                                 │ sles:15.6          │ true    │ 2024-12-12T06:13:34Z │ 11083        │
-│ Vulnerabilities                                 │ ubuntu:12.04       │ true    │ 2024-12-12T06:14:00Z │ 14934        │
-```
-You also inspect the events data to see when each source was last updated and if there were any problems.
-
-Keeping Anchore fresh with relevant data is one of the key tenants of the product and service. To learn more about how Anchore operates [vulnerability management](https://docs.anchore.com/current/docs/vulnerability_management/).
-
-> [!TIP]
-> We can also see this feed information in the Web UI under `system` when logged in as Admin.
-
-### Inspection of vulnerabilities
-
-During the analysis of container images, Anchore Enterprise performs deep inspection, collecting data on all artifacts in the image including files, operating system packages and software artifacts such as Ruby GEMs and Node.JS NPM modules.
-
-When we add an image, it takes time to analyze. We can find out if that analysis has been completed. We could run this with --wait if we put this into a pipeline.
-```bash
-anchorectl image get app:v2.0.0
-```
-Output
-```
-Tag: docker.io/app:v2.0.0
-Digest: sha256:30c82fbf2de5a357a91f38bf68b80c2cd5a4b9ded849dbdf4b4e82e807511ffa
-ParentDigest: sha256:30c82fbf2de5a357a91f38bf68b80c2cd5a4b9ded849dbdf4b4e82e807511ffa
-ID: c0f2aa60caaed2d504b23b9fd280f73341906b00ffcd8a6ecfe52acda252d359
-Analysis: analyzed
-Status: active
-```
-We could then show OS, Non-OS or ALL the vulnerabilities we find.
-```bash
-anchorectl image vulnerabilities app:v2.0.0 -a
-```
-Output 
-```
-all
-non-os
-os
+│ ClamAV Malware Database                         │ clamav_db          │ true    │ 2026-05-06T06:06:35Z │ 1            │
+│ CISA Known Exploitable Vulnerabilities Database │ kev_db             │ true    │ 2026-05-06T06:08:08Z │ 1228         │
+│ Exploit Prediction Scoring System Database      │ epss_db            │ true    │ 2026-05-06T06:04:42Z │ 269687       │
+│ Vulnerabilities                                 │ github:composer    │ true    │ 2026-05-06T06:13:36Z │ 4216         │
+│ Vulnerabilities                                 │ github:go          │ true    │ 2026-05-06T06:13:36Z │ 1991         │
+│ Vulnerabilities                                 │ github:java        │ true    │ 2026-05-06T06:13:36Z │ 5154         │
+│ Vulnerabilities                                 │ github:python      │ true    │ 2026-05-06T06:13:36Z │ 3847         │
+│ Vulnerabilities                                 │ nvd                │ true    │ 2026-05-06T06:14:04Z │ 261013       │
+│ Vulnerabilities                                 │ ubuntu:22.04       │ true    │ 2026-05-06T06:14:00Z │ 23147        │
+│ Vulnerabilities                                 │ debian:11          │ true    │ 2026-05-06T06:14:01Z │ 18920        │
+│ ...                                             │ ...                │ ...     │ ...                  │ ...          │
+└─────────────────────────────────────────────────┴────────────────────┴─────────┴──────────────────────┴──────────────┘
 ```
 
-Let's grab the Non-OS vulns in a table format (handy for pipeline output)
-```bash
-anchorectl image vulnerabilities app:v2.0.0 -t non-os
-```
-Output
-```
-┌─────────────────────┬──────────┬──────────────────────────────────┬────────────────────────────────────┬────────┬──────────────┬────────┬───────────────┬────────────────┬───────────────────────────────────────────────────┐
-│ ID                  │ SEVERITY │ NAME                             │ VERSION                            │ FIX    │ WILL NOT FIX │ TYPE   │ FEED GROUP    │ CVES           │ URL                                               │
-├─────────────────────┼──────────┼──────────────────────────────────┼────────────────────────────────────┼────────┼──────────────┼────────┼───────────────┼────────────────┼───────────────────────────────────────────────────┤
-│ CVE-2023-45290      │ Unknown  │ stdlib                           │ go1.19.12                          │ None   │ false        │ go     │ nvd           │                │ https://nvd.nist.gov/vuln/detail/CVE-2023-45290   │
-│ CVE-2023-44487      │ High     │ stdlib                           │ go1.19.12                          │ None   │ false        │ go     │ nvd           │ CVE-2023-44487 │ https://nvd.nist.gov/vuln/detail/CVE-2023-44487   │
-│ CVE-2023-45285      │ High     │ stdlib                           │ go1.19.12                          │ None   │ false        │ go     │ nvd           │ CVE-2023-45285 │ https://nvd.nist.gov/vuln/detail/CVE-2023-45285   │
-│ CVE-2024-24785      │ Unknown  │ stdlib                           │ go1.19.12                          │ None   │ false        │ go     │ nvd           │                │ https://nvd.nist.gov/vuln/detail/CVE-2024-24785   │
-│ CVE-2023-39326      │ Medium   │ stdlib                           │ go1.19.12                          │ None   │ false        │ go     │ nvd           │ CVE-2023-39326 │ https://nvd.nist.gov/vuln/detail/CVE-2023-39326   │
-│ GHSA-hpxr-w9w7-g4gv │ Medium   │ github.com/anchore/stereoscope   │ v0.0.0-20230627195312-cd49355d934e │ 0.0.1  │ false        │ go     │ github:go     │ CVE-2024-24579 │ https://github.com/advisories/GHSA-hpxr-w9w7-g4gv │
-│ GHSA-m425-mq94-257g │ High     │ google.golang.org/grpc           │ v1.55.0                            │ 1.56.3 │ false        │ go     │ github:go     │                │ https://github.com/advisories/GHSA-m425-mq94-257g │
-│ GHSA-2wrh-6pvc-2jm9 │ Medium   │ golang.org/x/net                 │ v0.11.0                            │ 0.13.0 │ false        │ go     │ github:go     │ CVE-2023-3978  │ https://github.com/advisories/GHSA-2wrh-6pvc-2jm9 │
-│ GHSA-jq35-85cj-fj4p │ Medium   │ github.com/docker/docker         │ v24.0.2+incompatible               │ 24.0.7 │ false        │ go     │ github:go     │                │ https://github.com/advisories/GHSA-jq35-85cj-fj4p │
-│ CVE-2023-39319      │ Medium   │ stdlib                           │ go1.19.12                          │ None   │ false        │ go     │ nvd           │ CVE-2023-39319 │ https://nvd.nist.gov/vuln/detail/CVE-2023-39319   │
-│ GHSA-4374-p667-p6c8 │ High     │ golang.org/x/net                 │ v0.11.0                            │ 0.17.0 │ false        │ go     │ github:go     │ CVE-2023-39325 │ https://github.com/advisories/GHSA-4374-p667-p6c8 │
-│ GHSA-7ww5-4wqc-m92c │ Medium   │ github.com/containerd/containerd │ v1.7.0                             │ 1.7.11 │ false        │ go     │ github:go     │                │ https://github.com/advisories/GHSA-7ww5-4wqc-m92c │
-│ CVE-2023-45287      │ High     │ stdlib                           │ go1.19.12                          │ None   │ false        │ go     │ nvd           │ CVE-2023-45287 │ https://nvd.nist.gov/vuln/detail/CVE-2023-45287   │
-│ CVE-2023-45289      │ Unknown  │ stdlib                           │ go1.19.12                          │ None   │ false        │ go     │ nvd           │                │ https://nvd.nist.gov/vuln/detail/CVE-2023-45289   │
-│ GHSA-qppj-fm5r-hxr3 │ Medium   │ golang.org/x/net                 │ v0.11.0                            │ 0.17.0 │ false        │ go     │ github:go     │ CVE-2023-44487 │ https://github.com/advisories/GHSA-qppj-fm5r-hxr3 │
-│ GHSA-8489-44mv-ggj8 │ Medium   │ log4j-core                       │ 2.15.0                             │ 2.17.1 │ false        │ java   │ github:java   │ CVE-2021-44832 │ https://github.com/advisories/GHSA-8489-44mv-ggj8 │
-│ GHSA-45x7-px36-x8w8 │ Medium   │ golang.org/x/crypto              │ v0.10.0                            │ 0.17.0 │ false        │ go     │ github:go     │ CVE-2023-48795 │ https://github.com/advisories/GHSA-45x7-px36-x8w8 │
-│ GHSA-9763-4f94-gfch │ High     │ github.com/cloudflare/circl      │ v1.3.3                             │ 1.3.7  │ false        │ go     │ github:go     │                │ https://github.com/advisories/GHSA-9763-4f94-gfch │
-│ GHSA-crh6-fp67-6883 │ Critical │ xmldom                           │ 0.6.0                              │ None   │ false        │ npm    │ github:npm    │ CVE-2022-39353 │ https://github.com/advisories/GHSA-crh6-fp67-6883 │
-│ GHSA-mw99-9chc-xw7r │ High     │ github.com/go-git/go-git/v5      │ v5.7.0                             │ 5.11.0 │ false        │ go     │ github:go     │ CVE-2023-49568 │ https://github.com/advisories/GHSA-mw99-9chc-xw7r │
-│ GHSA-p6xc-xr62-6r2g │ High     │ log4j-core                       │ 2.15.0                             │ 2.17.0 │ false        │ java   │ github:java   │ CVE-2021-45105 │ https://github.com/advisories/GHSA-p6xc-xr62-6r2g │
-│ GHSA-5fg8-2547-mr8q │ Medium   │ xmldom                           │ 0.6.0                              │ None   │ false        │ npm    │ github:npm    │ CVE-2021-32796 │ https://github.com/advisories/GHSA-5fg8-2547-mr8q │
-│ CVE-2023-39318      │ Medium   │ stdlib                           │ go1.19.12                          │ None   │ false        │ go     │ nvd           │ CVE-2023-39318 │ https://nvd.nist.gov/vuln/detail/CVE-2023-39318   │
-│ GHSA-qppj-fm5r-hxr3 │ Medium   │ google.golang.org/grpc           │ v1.55.0                            │ 1.56.3 │ false        │ go     │ github:go     │ CVE-2023-44487 │ https://github.com/advisories/GHSA-qppj-fm5r-hxr3 │
-│ CVE-2024-24783      │ Unknown  │ stdlib                           │ go1.19.12                          │ None   │ false        │ go     │ nvd           │                │ https://nvd.nist.gov/vuln/detail/CVE-2024-24783   │
-│ GHSA-8gq9-2x98-w8hf │ High     │ protobuf                         │ 3.20.0                             │ 3.20.2 │ false        │ python │ github:python │ CVE-2022-1941  │ https://github.com/advisories/GHSA-8gq9-2x98-w8hf │
-│ CVE-2024-24784      │ Unknown  │ stdlib                           │ go1.19.12                          │ None   │ false        │ go     │ nvd           │                │ https://nvd.nist.gov/vuln/detail/CVE-2024-24784   │
-│ GHSA-7rjr-3q55-vv33 │ Critical │ log4j-core                       │ 2.15.0                             │ 2.16.0 │ false        │ java   │ github:java   │ CVE-2021-45046 │ https://github.com/advisories/GHSA-7rjr-3q55-vv33 │
-│ CVE-2023-39323      │ High     │ stdlib                           │ go1.19.12                          │ None   │ false        │ go     │ nvd           │ CVE-2023-39323 │ https://nvd.nist.gov/vuln/detail/CVE-2023-39323   │
-│ GHSA-449p-3h89-pw88 │ Critical │ github.com/go-git/go-git/v5      │ v5.7.0                             │ 5.11.0 │ false        │ go     │ github:go     │ CVE-2023-49569 │ https://github.com/advisories/GHSA-449p-3h89-pw88 │
-└─────────────────────┴──────────┴──────────────────────────────────┴────────────────────────────────────┴────────┴──────────────┴────────┴───────────────┴────────────────┴───────────────────────────────────────────────────
-```
+A few things in that table matter for the rest of this module:
 
-We can inspect an image from other "view points" as well. This can be handy to trigger rules, checks or steps, based on what is discovered
-```bash
-anchorectl image content app:v2.0.0 -a
-```
-Output
-```
-binary
-content_search
-files
-gem
-go
-java
-malware
-npm
-nuget
-os
-python
-retrieved_files
-secret_search
-```
-
-Now let's check out something specific.
-```bash
-anchorectl image content app:v2.0.0 -t java
-```
-Output
-```
-Java Packages:
-┌────────────┬───────────────┬───────────────┬───────────────┬──────────┬──────────────────────────┬────────────────────────┬─────────┐
-│ PACKAGE    │ IMPL. VERSION │ SPEC. VERSION │ MAVEN VERSION │ TYPE     │ ORIGIN                   │ LOCATION               │ VERSION │
-├────────────┼───────────────┼───────────────┼───────────────┼──────────┼──────────────────────────┼────────────────────────┼─────────┤
-│ log4j-core │ 2.15.0        │ 2.15.0        │ 2.15.0        │ JAVA-JAR │ org.apache.logging.log4j │ /log4j-core-2.15.0.jar │ 2.15.0  │
-└────────────┴───────────────┴───────────────┴───────────────┴──────────┴──────────────────────────┴────────────────────────┴─────────┘
-```
-We should really get someone to check this package out a little more...
-
-One cool thing in the example above is that you can see where the software is being found as per the location column.
-This is great when you might have many binaries and packages nested all over and then mapping these to vulnerabilities helps you understand the situation faster.
-
-> We can also see this vuln information in the Web UI under `image` or via the `application` page.
-
-### Inspection of base image(s)
-
-Container images often include a parent or base image (the FROM syntax). This is typically an OS image like Ubuntu or Alpine but it could be a corporate or application 'golden image' provided with a bunch of standardised software.
-In either case, it's helpful to be able to separate out, where did this policy, vulnerability of otherwise originate from.
-And with Anchore you have Base Image support where you can filter out results and understand that hierarchy. 
-
-Let's start by adding our base image, which is named 'base' with no originality in mind. Is it happens the app:v2.0.0 was using this image as a parent.
-```bash
-anchorectl application add base --description "Webinar Demo Base Image"
-anchorectl application version add base@v1.0.0
-cd ./assets/base:v1.0.0
-docker build . -t base:v1.0.0
-anchorectl image add base:v1.0.0 --from docker 
-```
-Make note of the digest in the image add output, we will use this in the next step.
-```bash
-anchorectl application artifact add base@v1.0.0 image <retrieved-image-sha>
-```
-
-Now we add the v3.0.0 image that uses base:v1.0.0 as it's base image
-```bash
-anchorectl application version add app@v3.0.0
-cd ./assets/app:v3.0.0
-docker build . -t app:v3.0.0
-anchorectl image add app:v3.0.0 --from docker --dockerfile ./Dockerfile --force
-```
-Make note of the digest in the image add output, we will use this in the next two steps.
-```bash
-anchorectl application artifact add app@v3.0.0 image <retrieved-image-sha>
-```
-We can see the ancestors of our app:v3.0.0 (here we use the image digest)
-```bash
-anchorectl image ancestors <retrieved-image-sha>
-```
-Output
-```
- ✔ Fetched ancestors
-┌─────────────────────────────────────────────────────────────────────────┬─────────────────────────────────────────────────────────────────────────┬───────────────────────┐
-│ ANCESTOR IMAGE DIGEST                                                   │ LAYERS                                                                  │ TAGS                  │
-├─────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────────────────────┼───────────────────────┤
-│ sha256:f227723f265bcdf9adf8b72aeb84c0a384a29381c8afeb4211cba956de0b60ca │ sha256:b0aa185466d38ea4aa9fc2f44a0df75f2a2fb532718e08b5f6e5ea188f1ab0b2 │ docker.io/base:v1.0.0 │
-│                                                                         │ sha256:158225b8095a6cf7919fcd3b0730218a7bb47439bb26670629c6676a7ac6595a │                       │
-│                                                                         │ sha256:b0d0e74e8939f17782fd628559705564fdf75512d4f5de23e9a70ef140d57415 │                       │
-└─────────────────────────────────────────────────────────────────────────┴─────────────────────────────────────────────────────────────────────────┴───────────────────────┘
-```
-The web UI here is useful, under vulnerabilities click on `CVEs Not Inherited From Base`. which will filter out and ignore base image vulnerabilities. 
-Helping you focus on the application containers issues and avoid the wider noise, which can be targeted in other processes.
-
-> Learn more about [base images](https://docs.anchore.com/current/docs/overview/concepts/images/base_images/)
-
-### Inspection of secrets, retrieved files, file content and malware
-
-You can configure Anchore to scan for secrets (like AWS_ACCESS_KEY for example) as well as files and/or content in files that perhaps you might want to block from your containers.
-In addition, you can also scan a container for malware to catch situations where a binary with questionable provenance could make it into your pipeline (for example a cyptominer).
-
-Anchore can be configured to look for these unknowns as well as known matches with regexes, and it can be configured to do this locally (when scanning an image in distributed mode) as well as the core Anchore deployment itself ( centralized mode ). 
+- **Distro-specific feeds** (`ubuntu:22.04`, `debian:11`, `alpine:3.18`, `rhel:9` …) are the most authoritative source of OS-package vulnerability data for each distro. When Anchore Enterprise scans the Postgres or Ubuntu image, it matches OS packages against the corresponding distro feed first, falling back to NVD only when no distro entry exists. That's why the `namespace` field on a vulnerability record matters — it tells you which feed produced the match.
+- **Language ecosystem feeds** (`github:python`, `github:java`, `github:go`, `github:npm` …) drive matching for application-level dependencies — the Java archives in the Jenkins-style SBOM, the pinned versions in `requirements.txt`, and so on.
+- **NVD** (`nvd`) is the catch-all. It's used when nothing more specific applies, and it's always available as a cross-reference (`related_cves` on a match often points back here).
+- **KEV** (`kev_db`) is CISA's Known Exploited Vulnerabilities catalog — vulnerabilities with confirmed in-the-wild exploitation. A match flagged `kev: true` is one you almost certainly want to act on.
+- **EPSS** (`epss_db`) is the Exploit Prediction Scoring System. Each CVE gets a score (0–1) representing the probability of exploitation in the next 30 days, and a percentile ranking. EPSS is great for prioritising the long tail of high-severity but unlikely-to-be-exploited findings.
+- **ClamAV** (`clamav_db`) is the malware-signature database used for centralized image scanning.
 
 > [!NOTE]
-> Malware checks can only be run in centralized mode. Anchore must pull the image and scan server-side in order to check each file.
-> Malware, secrets and retrieved files have been enabled in this webinar demo and pre-configured. Content search has been disabled.
+> Feeds in 6.0 alpha are still served by the v5 catalog and Data Syncer service. The data is shared across both v5 and v6 surfaces — the same `feed list` command you've used before still works, and the freshness of each group still drives every match the new asset model produces. Anchore Enterprise will sync new data on a regular cycle; you can force an immediate sync with `anchorectl feed sync` if you've just brought the deployment up.
 
-Let's check if we have any secrets in our v2.0.0 app?
+To learn more about how Anchore Enterprise curates and prioritises feed data, see the [Anchore Enterprise vulnerability management docs](https://docs.anchore.com/current/docs/vulnerability_management/).
+
+## Phase 2 — List vulnerabilities at the version level
+
+The headline command for inspection in 6.0:
+
 ```bash
-anchorectl image content app:v2.0.0 -t secret_search
+anchorectl app version vuln list v1.0.0 --app app
 ```
-Output
+
+This returns the deduplicated set of vulnerability matches across **every asset** attached to `app@v1.0.0` — the Java SBOM, the Postgres image, the Ubuntu image, and the Python filesystem scan, all rolled up into one list. Output (truncated):
+
 ```
-Secret Search:
-┌────────────────┬─────────────────────────────────────────────────────────────┬────────────┐
-│ SEARCH NAME    │ PATH                                                        │ AT LINE(S) │
-├────────────────┼─────────────────────────────────────────────────────────────┼────────────┤
-│ PRIV_KEY       │ /usr/bin/ssh-add                                            │ 335        │
-│ PRIV_KEY       │ /usr/bin/ssh-keygen                                         │ 631        │
-│ PRIV_KEY       │ /usr/share/doc/perl-Net-SSLeay/assets/server_key.pem      │ 0          │
-│ PRIV_KEY       │ /usr/share/doc/perl-IO-Socket-SSL/example/simulate_proxy.pl │ 292        │
-│ PRIV_KEY       │ /usr/bin/ssh                                                │ 1475       │
-│ AWS_ACCESS_KEY │ /aws_access                                                 │ 0          │
-│ PRIV_KEY       │ /usr/libexec/openssh/ssh-keysign                            │ 345        │
-└────────────────┴─────────────────────────────────────────────────────────────┴────────────┘
+ ✔ Fetched vulns
+┌────────────────┬──────────┬───────────────────────┬─────────────┬─────────────────┬───────────┬─────┬─────────────┐
+│ VULNERABILITY  │ SEVERITY │ PACKAGE               │ VERSION     │ FIX             │ TYPE      │ KEV │ NAMESPACE   │
+├────────────────┼──────────┼───────────────────────┼─────────────┼─────────────────┼───────────┼─────┼─────────────┤
+│ CVE-2021-44228 │ Critical │ log4j-core            │ 2.14.1      │ 2.15.0          │ java      │ ✓   │ github:java │
+│ CVE-2018-18074 │ High     │ requests              │ 2.19.1      │ 2.20.0          │ python    │     │ github:python│
+│ CVE-2019-10906 │ High     │ Jinja2                │ 2.10        │ 2.10.1          │ python    │     │ github:python│
+│ CVE-2020-14343 │ Critical │ PyYAML                │ 5.1         │ 5.4             │ python    │     │ github:python│
+│ CVE-2024-12345 │ High     │ openssl               │ 3.0.2-0…    │ 3.0.2-0…+deb12u3│ deb       │     │ debian:12   │
+│ CVE-2024-67890 │ Medium   │ libpq5                │ 13.10-0…    │ 13.11-0…        │ deb       │     │ debian:12   │
+│ ...            │ ...      │ ...                   │ ...         │ ...             │ ...       │     │ ...         │
+└────────────────┴──────────┴───────────────────────┴─────────────┴─────────────────┴───────────┴─────┴─────────────┘
 ```
-Oh dear, looks like we found a few issues. This was found using the following regex configuration:
-```
-  secret_search:
-    match_params:
-      - MAXFILESIZE=10000
-      - STOREONMATCH=n
-    regexp_match:
-      - "AWS_ACCESS_KEY=(?i).*aws_access_key_id( *=+ *).*(?<![A-Z0-9])[A-Z0-9]{20}(?![A-Z0-9]).*"
-      - "AWS_SECRET_KEY=(?i).*aws_secret_access_key( *=+ *).*(?<![A-Za-z0-9/+=])[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=]).*"
-      - "PRIV_KEY=(?i)-+BEGIN(.*)PRIVATE KEY-+"
-      - "DOCKER_AUTH=(?i).*\"auth\": *\".+\""
-      - "API_KEY=(?i).*api(-|_)key( *=+ *).*(?<![A-Z0-9])[A-Z0-9]{20,60}(?![A-Z0-9]).*"
-```
-Let's list retrieve some known files
+
+> [!NOTE]
+> **What just happened:** the API took the package inventory of every asset under `v1.0.0`, matched each package against the relevant feed (per the `namespace` column), enriched each match with KEV / EPSS / CVSS data where available, and returned the consolidated list. If two assets contain the same package at the same version, you'll see one row with the relevant package coordinates — not duplicates per asset.
+
+A single match is much richer than the table shows. Re-run with JSON output for the full picture:
+
 ```bash
-anchorectl image content centos:latest -t retrieved_files
+anchorectl app version vuln list v1.0.0 --app app -o json | jq '.[0]'
 ```
-Output
+
+Output (single match):
+
+```json
+{
+  "vulnerability_id": "CVE-2021-44228",
+  "namespace": "github:java",
+  "severity": "Critical",
+  "fix_state": "fixed",
+  "fix_versions": [
+    { "version": "2.15.0", "date": "2021-12-09T00:00:00Z", "kind": "advisory" }
+  ],
+  "related_cves": ["CVE-2021-44228"],
+  "package_name": "log4j-core",
+  "package_version": "2.14.1",
+  "package_type": "java-archive",
+  "purl": "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1",
+  "epss_score": 0.97,
+  "epss_percentile": 0.99987,
+  "kev": true,
+  "cvss_assessments": [
+    { "source": "nvd@nist.gov", "is_primary": true,
+      "v2_score": null, "v3_score": 10.0, "v4_score": null }
+  ],
+  "vex_status": null
+}
 ```
-Retrieved Files:
-┌─────────────┐
-│ PATH        │
-├─────────────┤
-│ /etc/passwd │
-└─────────────┘
-```
-Oh dear, looks like we added a password file. This was found using the following regex configuration:
-```
-  retrieve_files:
-    file_list:
-      - '/etc/passwd'
-      - '/etc/services'
-      - '/etc/sudoers'
-```
-Finally, with malware we need to analyze in centralized mode and therefore need to pull an image from a registry.
+
+The fields worth knowing:
+
+| Field | What it tells you |
+|---|---|
+| `vulnerability_id` | The primary identifier — usually a `CVE-…` or a `GHSA-…`. |
+| `namespace` | The feed that produced the match (`github:java`, `nvd`, `debian:12`, `ubuntu:22.04`, …). Distro namespaces win over `nvd` when both apply. |
+| `severity` | Anchore Enterprise's normalised severity: `Critical`, `High`, `Medium`, `Low`, `Negligible`, `Unknown`. |
+| `fix_state` / `fix_versions` | Whether a fix exists and at which version. `kind: "advisory"` is the vendor advisory date; `"first-observed"` is the date Anchore Enterprise first saw the fix in a package repository. |
+| `kev` | `true` if the CVE is in CISA's Known Exploited Vulnerabilities catalog — confirmed real-world exploitation. |
+| `epss_score` / `epss_percentile` | Probability of exploitation in the next 30 days (0–1) and percentile ranking against all CVEs. |
+| `cvss_assessments` | Every CVSS score from every source — NVD, vendor advisories, etc. `is_primary: true` marks Anchore Enterprise's preferred source. |
+| `related_cves` | Cross-references — useful when a GHSA-… match has an underlying CVE-…. |
+| `vex_status` | If you've added a VEX annotation for this `(vulnerability, package)` pair under this version, the status is reflected here. We'll set one in Phase 5. |
+
+## Phase 3 — Filter and prioritise
+
+The CLI returns the full list; filtering is done client-side with `jq`. Four filters cover most real triage work:
+
+**1. Critical and High severity only**
+
 ```bash
-anchorectl image add docker.io/danperry/app:v2.0.0 --wait
-anchorectl image content docker.io/danperry/app:v2.0.0 -t malware
+anchorectl app version vuln list v1.0.0 --app app -o json \
+  | jq '[.[] | select(.severity == "Critical" or .severity == "High")]'
 ```
-Output
+
+**2. Only matches with a fix available**
+
+```bash
+anchorectl app version vuln list v1.0.0 --app app -o json \
+  | jq '[.[] | select(.fix_state == "fixed")]'
 ```
-Malware:
-┌─────────┬──────────────────────────────────────────┬──────────────┐
-│ SCANNER │ MATCHED SIGNATURE                        │ PATH         │
-├─────────┼──────────────────────────────────────────┼──────────────┤
-│ clamav  │ Multios.Trojan.CryptocoinMiner-6448864-1 │ /xmrig/xmrig │
-│ clamav  │ Multios.Coinminer.Miner-6781728-2        │ /xmrig/xmrig │
-└─────────┴──────────────────────────────────────────┴──────────────┘
+
+**3. CISA KEV — known exploited in the wild**
+
+```bash
+anchorectl app version vuln list v1.0.0 --app app -o json \
+  | jq '[.[] | select(.kev == true)] | sort_by(-.epss_score)'
 ```
-Oh, dear... it looks like this image has some malware baked in. We better not deploy this!
+
+**4. Top 20 by EPSS — most likely to be exploited next**
+
+```bash
+anchorectl app version vuln list v1.0.0 --app app -o json \
+  | jq '[.[] | select(.epss_score != null)] | sort_by(-.epss_score) | .[0:20]'
+```
 
 > [!TIP]
-> You can see ALL of this information in the web UI for the image in question under the SBOM navigation tab.
-> Later you will learn how this information can be used at a policy enforcement level.
+> If your org's prioritisation rule is "Critical/High **and** (KEV true **or** EPSS percentile ≥ 0.95)", that's one `jq` selector away — and the same rule expressed as an Anchore Enterprise policy will give you pass/fail evaluation, which is the next module's territory.
 
-## Next Lab
+## Phase 4 — Drill into a specific asset
 
-Next: [Policy Enforcement](policy-enforcement.md)
+The CLI exposes vulnerabilities at the **version** level. To narrow to a single asset (say "what does the Postgres image specifically contribute?"), pull the asset details and the original SBOM, then cross-reference.
+
+Get the asset's metadata — including the annotations you set in Visibility:
+
+```bash
+anchorectl app version asset get postgres \
+  --app app --version v1.0.0 -o json | jq '{name, type, annotations, image_reference, system_metadata}'
+```
+
+Pull back the SBOM that was stored for the asset:
+
+```bash
+anchorectl app version asset sbom get postgres \
+  --app app --version v1.0.0 \
+  --file ./postgres-asset-sbom.json
+```
+
+The returned SBOM is exactly what Anchore Enterprise is matching against — every package the asset contributes to the version-level view. Once you have the SBOM in hand, narrowing version-level vulnerabilities to those that came from this asset is a `jq` join on `package_name` + `package_version`. For a concrete example:
+
+```bash
+# package coordinates from this asset's SBOM
+jq -r '[.artifacts[] | "\(.name)\(.version)"] | unique | .[]' \
+  ./postgres-asset-sbom.json > /tmp/postgres-pkgs.txt
+
+# version-level vulns whose package matches
+anchorectl app version vuln list v1.0.0 --app app -o json \
+  | jq --slurpfile keys /tmp/postgres-pkgs.txt \
+       '[.[] | select((.package_name + "" + .package_version) as $k | $keys[0] | index($k))]'
+```
+
+> [!NOTE]
+> A first-class "vulnerabilities for this specific asset" CLI command isn't in the asset surface at this alpha — the version-level rollup with `jq` filtering covers the same ground. Each asset's SBOM is round-trippable, so any analysis you can do with an SBOM file you can do here.
+
+## Phase 5 — Triage with VEX annotations
+
+Not every vulnerability in the list is exploitable in your context. A library may be present but never invoked; a vulnerable code path may be reachable only with a configuration you don't ship; a fix may be backported by your distro vendor under a different name. **VEX annotations** capture those judgements in a machine-readable form, scoped to a specific `(vulnerability, package, version)` triple under an app version.
+
+Let's record one against the Python asset. `CVE-2019-10906` (Jinja2 sandbox escape) is a real CVE that affects `Jinja2==2.10`. The demo Python application doesn't render any user-supplied templates — it just returns JSON via Flask — so the vulnerable code path is never executed. That's a textbook `not_affected` / `vulnerable_code_not_in_execute_path` case.
+
+```bash
+anchorectl app version vex add v1.0.0 \
+  --app app \
+  --vuln-id CVE-2019-10906 \
+  --pkg-name Jinja2 \
+  --pkg-type python \
+  --pkg-version 2.10 \
+  --status not_affected \
+  --justification vulnerable_code_not_in_execute_path \
+  --impact-statement "The Flask routes in app.py never render user-supplied Jinja templates; the sandbox escape requires render_template_string() with attacker-controlled input, which is not present." \
+  --action-statement "No action required for this release. Tracked for upgrade in v1.1.0." \
+  --comment "Reviewed by security-team on 2026-05-06"
+```
+
+The `--status` and `--justification` values come from the CycloneDX/OpenVEX vocabulary:
+
+| `--status` | Meaning |
+|---|---|
+| `not_affected` | The vulnerability does not affect this product/version. Requires a `--justification`. |
+| `affected` | The vulnerability affects this product/version. Action expected. |
+| `fixed` | A fix has been applied to this product/version. |
+| `under_investigation` | Triage in progress; status will be revised. |
+
+| `--justification` (used with `not_affected`) | Meaning |
+|---|---|
+| `component_not_present` | The vulnerable component isn't actually present despite what the SBOM says. |
+| `vulnerable_code_not_present` | The component is present but the vulnerable code isn't (e.g. compiled-out feature). |
+| `vulnerable_code_not_in_execute_path` | The vulnerable code is present but never reached at runtime. |
+| `vulnerable_code_cannot_be_controlled_by_adversary` | An adversary has no input path to reach the vulnerable code. |
+| `inline_mitigations_already_exist` | A control already prevents exploitation (WAF rule, sandbox, syscall filter, …). |
+
+List the annotations you've made for this version:
+
+```bash
+anchorectl app version vex list v1.0.0 --app app
+```
+
+Re-run the version-level vuln list and notice the `vex_status` field on `CVE-2019-10906` for `Jinja2 2.10` is now populated:
+
+```bash
+anchorectl app version vuln list v1.0.0 --app app -o json \
+  | jq '.[] | select(.vulnerability_id == "CVE-2019-10906") | {vulnerability_id, package_name, package_version, severity, vex_status}'
+```
+
+Update an annotation as the situation evolves (status, justification, statements, comment all editable):
+
+```bash
+anchorectl app version vex update <vuln-annotation-id> \
+  --app app --version v1.0.0 \
+  --status affected \
+  --action-statement "Upgrade scheduled for v1.0.1; mitigation in place via input validation."
+```
+
+Or remove it entirely:
+
+```bash
+anchorectl app version vex delete <vuln-annotation-id> \
+  --app app --version v1.0.0
+```
+
+> [!NOTE]
+> VEX annotations are scoped to an **app version**. Recording `not_affected` for `(CVE-2019-10906, Jinja2, 2.10)` under `v1.0.0` does not silently apply to `v1.0.1` — each release is its own assessment. The Remediation module covers when to use app-level vs. version-level annotations and how to manage VEX over time.
+
+## Phase 6 — Export for downstream tools
+
+Anchore Enterprise produces four exports you'll reach for in audit, compliance, and integration work. Each export is created as a job, fetched on completion, and either streamed to stdout or written to a file.
+
+**Combined SBOM (CycloneDX JSON)** — every asset under the version, merged into one CycloneDX SBOM document. Use this when a customer, an auditor, or a downstream tool wants "the SBOM for this release" rather than the per-asset SBOMs:
+
+```bash
+anchorectl app version export sbom v1.0.0 \
+  --app app \
+  --file ./app-v1.0.0-sbom.cdx.json
+```
+
+> [!NOTE]
+> This is different from `app version asset sbom get` (which you used in Phase 4). `asset sbom get` returns the original SBOM Anchore Enterprise stored for a single asset, in whatever format you ingested it. `app version export sbom` aggregates the package inventory of every asset under the version and emits a single CycloneDX JSON document — convenient for a release-level hand-off, less faithful to each asset's original format.
+
+**Vulnerability report (CSV)** — the canonical "send this to your security team / GRC tool" artifact:
+
+```bash
+anchorectl app version export vulnerabilities v1.0.0 \
+  --app app \
+  --file ./app-v1.0.0-vulnerabilities.csv
+```
+
+**Package inventory (CSV)** — every package across every asset, deduplicated, with location and source attribution:
+
+```bash
+anchorectl app version export packages v1.0.0 \
+  --app app \
+  --file ./app-v1.0.0-packages.csv
+```
+
+**VEX document (CycloneDX)** — every annotation you recorded in Phase 5, packaged as a CycloneDX VEX document you can hand to a customer, attach to a release, or feed into a downstream scanner:
+
+```bash
+anchorectl app version export vex v1.0.0 \
+  --app app \
+  --file ./app-v1.0.0-vex.cdx.json
+```
+
+The CycloneDX VEX uses the same status / justification vocabulary as `app version vex add`, so a downstream tool that understands CycloneDX VEX will pick up your `not_affected` decisions automatically.
+
+## Recap
+
+You walked the full inspection loop for `app@v1.0.0`:
+
+1. Saw the **feed coverage** Anchore Enterprise is using — distro feeds, language-ecosystem feeds, NVD, KEV, EPSS, ClamAV.
+2. Pulled the **version-level vulnerability list** that consolidates findings across all four assets.
+3. Filtered with `jq` by severity, fix availability, KEV, and EPSS to get to the rows that matter.
+4. Drilled into the **Postgres asset** specifically, pulling its SBOM and joining back to the version-level data.
+5. Recorded a **VEX annotation** marking `CVE-2019-10906` in `Jinja2 2.10` as `not_affected / vulnerable_code_not_in_execute_path` for this release.
+6. Exported the **combined SBOM, vulnerabilities, packages, and VEX** as artifacts you can hand to other tools or stakeholders.
+
+Useful 5.x → 6.0 mappings to keep in mind:
+
+| 5.x                                              | 6.0                                                                  |
+|--------------------------------------------------|----------------------------------------------------------------------|
+| `image vulnerabilities <image> -t os/non-os/all` | `app version vuln list <version> --app <app>` (filter via `jq` on namespace / package_type) |
+| `image content <image> -t java`                  | `app version package list <version> --app <app>` for the package inventory |
+| `image content <image> -t secret_search`         | Per-asset secret/malware/file content surfaces are not exposed at the asset CLI in 6.0 alpha; expected in a later iteration |
+| `image ancestors <digest>`                       | No equivalent in the v6 asset model yet |
+| Allowlists (in policy)                           | VEX annotations (`app version vex …`) for vulnerability suppression  |
+
+## Next Module
+
+Next: [Policy Enforcement](policy-enforcement.md) — turning the raw inspection data into pass/fail gates for releases.

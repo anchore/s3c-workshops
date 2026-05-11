@@ -17,7 +17,7 @@ This module will walk you through the following tasks or activities:
 
 1. **Define the application and a version** — the container that everything else attaches to.
 2. **Import an SBOM as an asset** — use a bundled SPDX SBOM that represents an externally-produced hand-off.
-3. **Scan container images as assets** — try both centralized (Anchore pulls) and distributed (anchorectl pulls and scans locally) flows against public images.
+3. **Scan container images as assets** — try both centralized (Anchore Enterprise pulls) and distributed (anchorectl pulls and scans locally) flows against public images.
 4. **Scan a filesystem as an asset** — extract a bundled tarball of a small Python application and let anchorectl generate the SBOM directly from the source tree.
 5. **Inspect what you've collected** — list assets, fetch SBOMs, view aggregated vulnerabilities.
 6. **Update asset metadata** — edit annotations, rename, or reclassify an existing asset in place without re-scanning.
@@ -91,7 +91,7 @@ The remaining commands in this module will pass `--app` / `--version` explicitly
 
 ## Phase 2 — Import an SBOM as an asset
 
-A common 6.0 pattern is to ingest SBOMs that were produced *outside* of Anchore — by a vendor, by a build pipeline, by a different scanner, or by a hand-off from another team. Anchore Enterprise accepts every mainstream SBOM format and treats each one as a first-class asset.
+A common 6.0 pattern is to ingest SBOMs that were produced *outside* of Anchore Enterprise — by a vendor, by a build pipeline, by a different scanner, or by a hand-off from another team. Anchore Enterprise accepts every mainstream SBOM format and treats each one as a first-class asset.
 
 ### Supported SBOM formats
 
@@ -153,7 +153,7 @@ Both end up as container assets under `app@v1.0.0`, and from Phase 4 onward they
 
 ### Centralized analysis with `add container-image-remote`
 
-We'll start by letting Anchore pull `docker.io/library/postgres:13` and analyze it server-side. Imagine this is the database image that ships alongside the Java application whose SBOM you ingested in Phase 2.
+We'll start by letting Anchore Enterprise pull `docker.io/library/postgres:13` and analyze it server-side. Imagine this is the database image that ships alongside the Java application whose SBOM you ingested in Phase 2.
 
 > [!NOTE]
 > The image we're using is public, so no credentials are needed. For private registries, register credentials first with `anchorectl registry add <registry> --username <user>` (the password is supplied via the `ANCHORECTL_REGISTRY_PASSWORD` environment variable). The registry argument supports wildcards like `gcr.io/myproject/*`. Inspect what's configured with `anchorectl registry list`.
@@ -181,14 +181,14 @@ Status: complete
 ```
 
 > [!NOTE]
-> **What just happened:** Anchore queued a job that pulled the image from Docker Hub, generated an SBOM server-side, persisted the packages and image metadata under the version, and ran a vulnerability scan. The Jobs API does the work asynchronously — `--wait` just polls until it finishes.
+> **What just happened:** Anchore Enterprise queued a job that pulled the image from Docker Hub, generated an SBOM server-side, persisted the packages and image metadata under the version, and ran a vulnerability scan. The Jobs API does the work asynchronously — `--wait` just polls until it finishes.
 
 > [!TIP]
 > Drop `--wait` and the command returns the job ID immediately — useful in CI pipelines where you want to fan out work and check results later. Track in-flight jobs with `anchorectl app job list app --status processing` and inspect a single job with `anchorectl app job get <job-id> --app app`. Job statuses are `pending`, `processing`, `complete`, `failed`, `cancelled`.
 
 ### Distributed analysis with `add container-image`
 
-Now we'll do the same thing the other way round — anchorectl pulls a small public image (`docker.io/library/ubuntu:jammy`, around 30 MB compressed), generates the SBOM locally, and uploads only the result. Use this flow when the image shouldn't leave your build host (air-gapped builds, ephemeral CI runners, embargoed artifacts), or when Anchore can't reach your registry but you can.
+Now we'll do the same thing the other way round — anchorectl pulls a small public image (`docker.io/library/ubuntu:jammy`, around 30 MB compressed), generates the SBOM locally, and uploads only the result. Use this flow when the image shouldn't leave your build host (air-gapped builds, ephemeral CI runners, embargoed artifacts), or when Anchore Enterprise can't reach your registry but you can.
 
 ```bash
 anchorectl app version asset add container-image docker.io/library/ubuntu:jammy \
@@ -228,15 +228,15 @@ By default `add container-image` reads from the registry. The `--from` flag chan
 
 | Centralized (`add container-image-remote`)        | Distributed (`add container-image`)                       |
 |---------------------------------------------------|-----------------------------------------------------------|
-| Anchore pulls the image from the registry         | anchorectl pulls or reads the image where it's running    |
+| Anchore Enterprise pulls the image from the registry | anchorectl pulls or reads the image where it's running |
 | SBOM is generated server-side                     | SBOM is generated client-side and uploaded                |
-| Best when Anchore has direct registry access      | Best when the image stays on the build host               |
+| Best when Anchore Enterprise has direct registry access | Best when the image stays on the build host         |
 | Compute happens in Enterprise                     | Compute happens wherever you run anchorectl               |
-| One network egress (Anchore → registry)           | No exposure of the registry to Anchore                    |
+| One network egress (Anchore Enterprise → registry) | No exposure of the registry to Anchore Enterprise        |
 
 ### Watching the registry for new tags
 
-For images that change frequently — base images, third-party services you depend on, your own published artifacts — Anchore can watch a repository continuously and analyze new tags as they appear. Set up a watch on the Postgres repository you analyzed centrally:
+For images that change frequently — base images, third-party services you depend on, your own published artifacts — Anchore Enterprise can watch a repository continuously and analyze new tags as they appear. Set up a watch on the Postgres repository you analyzed centrally:
 
 ```bash
 anchorectl repo add docker.io/library/postgres --auto-subscribe
