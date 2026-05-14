@@ -13,7 +13,7 @@
           "id": "stop-on-critical",
           "gate": "vulnerabilities",
           "trigger": "package",
-          "action": "stop",
+          "action": "STOP",
           "description": "Stop the build if any package has a Critical-severity vulnerability.",
           "params": [
             {"name": "package_type", "value": "all"},
@@ -25,7 +25,7 @@
           "id": "warn-high-with-fix",
           "gate": "vulnerabilities",
           "trigger": "package",
-          "action": "warn",
+          "action": "WARN",
           "description": "Warn when a High-severity vulnerability already has a fix available — these are the easy wins.",
           "params": [
             {"name": "package_type", "value": "all"},
@@ -38,7 +38,7 @@
           "id": "stop-on-kev",
           "gate": "vulnerabilities",
           "trigger": "package",
-          "action": "stop",
+          "action": "STOP",
           "description": "Stop on any vulnerability listed in the CISA Known Exploited Vulnerabilities catalog, regardless of severity.",
           "params": [
             {"name": "package_type", "value": "all"},

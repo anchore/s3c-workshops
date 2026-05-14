@@ -83,7 +83,7 @@ Each rule is a small object:
   "id": "stop-on-critical",
   "gate": "vulnerabilities",
   "trigger": "package",
-  "action": "stop",
+  "action": "STOP",
   "description": "Stop the build if any package has a Critical-severity vulnerability.",
   "params": [
     {"name": "package_type", "value": "all"},
@@ -161,28 +161,22 @@ For this module use **Option A** — it makes the binding explicit and lets the 
 
 ## Phase 5 — Evaluate `v1.0.0` and read the findings
 
-Anchore Enterprise evaluates policy as an asynchronous job — like SBOM ingest and image analysis. There's no anchorectl `policy evaluate` command in 6.0 alpha yet, so we trigger the evaluation by calling the API directly and then read the results with the CLI.
+Anchore Enterprise evaluates policy as an asynchronous job — like SBOM ingest and image analysis. Unlike those jobs, you don't have to enqueue a policy evaluation by hand. When you call `app version policy status get` or `app version policy findings list` for a version that hasn't been evaluated against the current policy digest yet, Anchore Enterprise auto-enqueues a high-priority evaluation job for you and returns a `409` telling you to retry shortly. Subsequent calls return the stored result.
+
+Ask for the version-level status:
 
 ```bash
-APP_ID=$(anchorectl app get app -o id)
-VERSION_ID=$(anchorectl app version get v1.0.0 --app app -o id)
-
-curl -sS -X POST \
-  -H "Content-Type: application/json" \
-  -u "${ANCHORECTL_USERNAME}:${ANCHORECTL_PASSWORD}" \
-  -H "x-anchore-account: admin" \
-  "${ANCHORECTL_URL}/v2/apps/${APP_ID}/jobs/evaluate-policy" \
-  -d "{\"app_version_id\": \"${VERSION_ID}\"}"
+anchorectl app version policy status get v1.0.0 --app app
 ```
 
-The response contains a job ID. Track it like any other v6 job:
+The first call after binding the policy returns an error saying "Policy evaluation is stale or missing. … Retry after re-evaluation completes." That's the auto-enqueue — Anchore Enterprise has just queued an `evaluate-policy` job for `v1.0.0`. Track it like any other v6 job:
 
 ```bash
 anchorectl app job list app --status processing
 anchorectl app job list app --status complete
 ```
 
-Once the evaluate-policy job finishes, fetch the version-level outcome:
+Once the most recent `evaluate-policy` entry is `complete`, re-run the status call:
 
 ```bash
 anchorectl app version policy status get v1.0.0 --app app
@@ -198,7 +192,7 @@ Policy ID: viperr-lab-policy
 Policy Digest: sha256:a4f9…
 ```
 
-`Status: fail` means at least one `stop` rule fired. To see *which* rules fired and on *which* findings, list the findings:
+`Status: fail` means at least one `STOP` rule fired. To see *which* rules fired and on *which* findings, list the findings:
 
 ```bash
 anchorectl app version policy findings list v1.0.0 --app app
@@ -220,25 +214,45 @@ Output (truncated):
 └──────────────────┴──────┴────────────────┴───────────┴─────────────┴──────────────────────────────────────────────┘
 ```
 
-Each finding cites the rule that fired, the action, the vulnerability, the package, and which asset contributed the package. JSON output gives you the full detail blob (CVSS, EPSS, fix info, the `vex_status` if any) per finding:
+> [!NOTE]
+> Findings serialize `action` as a lowercased string (`"stop"` / `"warn"` / `"go"`) even though the policy bundle JSON requires the uppercased enum (`STOP` / `WARN` / `GO`). The v5 catalog stores the bundle in one case; the v6 component_catalog returns findings in the other. Filter on the lowercase form when querying findings output.
+
+Each finding cites the rule that fired, the action, the vulnerability, the package, and which asset contributed the package. JSON output gives you the full detail blob — explore it for fields like the rule ID, the matched vulnerability, the package coordinates, and any allowlist or VEX state attached to the finding:
 
 ```bash
 anchorectl app version policy findings list v1.0.0 --app app -o json \
-  | jq '.[] | select(.action == "stop") | {rule_id, vulnerability_id, package_name, package_version, asset_name}'
+  | jq '.[] | select(.action == "stop")'
 ```
 
 > [!TIP]
 > `findings list` is paginated under the hood — for a large deployment, prefer `-o json` and process programmatically. The CSV export in Phase 6 is the right shape for hand-off to a security team or GRC tool.
 
+> [!IMPORTANT]
+> The auto-enqueue fires only when the **policy digest has changed** (e.g. you re-imported the bundle with `policy update --input ...`) or when no evaluation exists for the version yet. Other changes that affect the result — adding a VEX annotation, attaching new assets — don't bump the digest, so subsequent `status get` calls return the cached evaluation until something refreshes the digest or you trigger a fresh evaluation explicitly. Phase 6 hits this case.
+
 ## Phase 6 — Suppress with VEX, then export the compliance report
 
 In the Inspection module you marked `CVE-2019-10906` in `Jinja2 2.10` as `not_affected / vulnerable_code_not_in_execute_path` — recording that the vulnerable code path isn't reachable in the demo Python app. Policy evaluation is VEX-aware: a `not_affected` annotation suppresses the matching finding so a triaged-and-justified vulnerability doesn't keep failing your pipeline.
 
-Re-trigger the evaluation (same `curl` call as Phase 5) and re-list the findings:
+Adding a VEX annotation doesn't bump the policy digest, so `status get` and `findings list` won't auto-enqueue a fresh evaluation on their own — they'll keep returning the cached result. Trigger the re-evaluation explicitly via the API:
+
+```bash
+APP_ID=$(anchorectl app get app -o id)
+VERSION_ID=$(anchorectl app version get v1.0.0 --app app -o id)
+
+curl -sS -X POST \
+  -H "Content-Type: application/json" \
+  -u "${ANCHORECTL_USERNAME}:${ANCHORECTL_PASSWORD}" \
+  -H "x-anchore-account: admin" \
+  "${ANCHORECTL_URL}/v2/apps/${APP_ID}/jobs/evaluate-policy" \
+  -d "{\"app_version_id\": \"${VERSION_ID}\"}"
+```
+
+Wait for the new `evaluate-policy` job to complete (`anchorectl app job list app --status processing,complete`), then re-list the findings:
 
 ```bash
 anchorectl app version policy findings list v1.0.0 --app app -o json \
-  | jq '.[] | select(.vulnerability_id == "CVE-2019-10906")'
+  | jq '.[] | select(.vulnerabilityId == "CVE-2019-10906")'
 ```
 
 The result is empty — the rule didn't fire on that match because the VEX annotation marked it as `not_affected`. Other High-with-fix findings still surface (we didn't VEX them); only the one you explicitly triaged was suppressed.
@@ -278,7 +292,7 @@ Useful 5.x → 6.0 mappings:
 | `policy add/get/list/update/activate`      | Unchanged — still managed via the v5 catalog                          |
 | Allowlists (in-bundle) for waivers         | Allowlists *or* VEX annotations (`app version vex …`) per-version    |
 
-**CI/CD pattern.** A pipeline gate is the same shape as the manual flow: ingest your assets (Visibility), call `POST /jobs/evaluate-policy`, poll `app job` until complete, then read `app version policy status get -o id`. Treat `Status: fail` as exit-1 to break the build. The VIPERR Remediation module covers feeding the resulting findings back to developers via webhook, Slack, or issue tracker.
+**CI/CD pattern.** A pipeline gate is the same shape as the manual flow: ingest your assets (Visibility), call `app version policy status get` — which auto-enqueues an evaluation when one is needed — poll `anchorectl app job list app --status processing,complete` until the latest `evaluate-policy` job is done, then re-read `app version policy status get` for the final outcome. Treat `Status: fail` as exit-1 to break the build. When you need an explicit re-trigger (e.g. after a VEX change that doesn't bump the policy digest), `POST /v2/apps/<id>/jobs/evaluate-policy` is the manual escape hatch shown in Phase 6. The VIPERR Remediation module covers feeding the resulting findings back to developers via webhook, Slack, or issue tracker.
 
 ## Next Module
 
