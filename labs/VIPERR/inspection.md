@@ -311,7 +311,7 @@ You walked the full inspection loop for `app@v1.0.0`:
 1. Saw the **feed coverage** Anchore Enterprise is using — distro feeds, language-ecosystem feeds, NVD, KEV, EPSS, ClamAV.
 2. Pulled the **version-level vulnerability list** that consolidates findings across all four assets.
 3. Filtered with `jq` by severity, fix availability, KEV, and EPSS to get to the rows that matter.
-4. Drilled into the **Postgres asset** specifically, pulling its SBOM and joining back to the version-level data.
+4. Drilled into the **Postgres asset** to view its asset-level metadata — annotations, type, and image reference — via `app version asset get`.
 5. Recorded a **VEX annotation** marking `CVE-2019-10906` in `Jinja2 2.10` as `not_affected / vulnerable_code_not_in_execute_path` for this release.
 6. Exported the **combined SBOM, vulnerabilities, packages, and VEX** as artifacts you can hand to other tools or stakeholders.
 
