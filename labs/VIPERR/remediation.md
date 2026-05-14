@@ -13,23 +13,9 @@ In Anchore Enterprise 6.0 there are three loops of remediation, and this module 
 > [!IMPORTANT]
 > This module assumes you completed the [Visibility](visibility.md), [Inspection](inspection.md), and [Policy Enforcement](policy-enforcement.md) modules. It uses the same `app`, the `v1.0.0` version, the four assets attached to it, the VEX annotation against `CVE-2019-10906` in `Jinja2 2.10`, and the `viperr-lab-policy` bundle bound to `app`.
 
-## How this lab module is structured
+**Subscriptions are per-image-or-repo.** A `vuln_update` subscription on a tag triggers a re-scan when feeds change; a `policy_eval` subscription triggers a re-evaluation. These remain v5-backed in 6.0 alpha — the result of a re-scan flows into the v5 catalog, and the same record is what backs the v6 asset.
 
-Seven phases, fully sequential:
-
-1. **The 6.0 remediation model** — the three loops above and how they map to anchorectl surfaces.
-2. **Triage with VEX beyond `not_affected`** — record `affected` and `under_investigation` decisions for findings you can't immediately fix.
-3. **Bundle-level allowlists** — add a long-lived, policy-wide exception with an expiry.
-4. **Time-bound rules** — give Highs a grace period before they start failing the build.
-5. **Subscriptions and notifications** — wire continuous re-scan and re-evaluation to an endpoint.
-6. **Recommended actions in the Web UI** — drive remediation through the Action Workbench.
-7. **Ship the fix as `v1.0.1`** — upgrade the Python application's dependencies and create a new app version with the fixed asset attached.
-
-By the end you'll have used every per-version triage mechanism, configured a feedback loop into engineering, and shipped a clean `v1.0.1` that the policy passes.
-
-## Phase 1 — The 6.0 remediation model
-
-A few principles inform every command in this module.
+**Action Workbench is Web UI in 6.0 alpha.** Recommendation lookup, ticket attachment, and the push to GitHub / Jira / Slack / webhook live in `/applications/<app>/...` in the Web UI. There is no `anchorectl recommend` or `anchorectl workbench` command at this alpha.
 
 **VEX is per-version.** An annotation you record against `(CVE-2019-10906, Jinja2, 2.10)` under `v1.0.0` does **not** silently carry forward to `v1.0.1`. Each release is its own assessment. Use VEX when the judgement is evidence-backed and specific to a release — "this code path isn't reachable in *this* build", "this CVE is mitigated by *this* config we ship in *this* version."
 
@@ -37,19 +23,116 @@ A few principles inform every command in this module.
 
 **Time-bound rules are per-bundle.** Parameters like `max_days_since_fix` and `max_days_since_creation` build a clock into the rule itself: a High doesn't have to stop the build the moment a fix appears, but it can become blocking after, say, 14 days.
 
-**Subscriptions are per-image-or-repo.** A `vuln_update` subscription on a tag triggers a re-scan when feeds change; a `policy_eval` subscription triggers a re-evaluation. These remain v5-backed in 6.0 alpha — the result of a re-scan flows into the v5 catalog, and the same record is what backs the v6 asset.
-
-**Action Workbench is Web UI in 6.0 alpha.** Recommendation lookup, ticket attachment, and the push to GitHub / Jira / Slack / webhook live in `/applications/<app>/...` in the Web UI. There is no `anchorectl recommend` or `anchorectl workbench` command at this alpha.
-
 **The outer loop is `app version add`.** When you actually change the artifact, you create a new version (`v1.0.1`) and re-attach the fixed assets. The old version stays a faithful snapshot of what you shipped before; the new version is the snapshot of what you ship now. Both remain queryable for drift and audit.
 
-## Phase 2 — Triage with VEX beyond `not_affected`
+## How this lab module is structured
+
+Six phases, fully sequential:
+
+1. **Subscriptions and notifications** — wire continuous re-scan and re-evaluation to an endpoint.
+2. **Recommended actions in the Web UI** — drive remediation through the Action Workbench.
+3. **Triage with VEX beyond `not_affected`** — record `affected` and `under_investigation` decisions for findings you can't immediately fix.
+4. **Bundle-level allowlists** — add a long-lived, policy-wide exception with an expiry.
+5. **Time-bound rules** — give Highs a grace period before they start failing the build.
+6. **Ship the fix as `v1.0.1`** — upgrade the Python application's dependencies and create a new app version with the fixed asset attached.
+
+By the end you'll have used every per-version triage mechanism, configured a feedback loop into engineering, and shipped a clean `v1.0.1` that the policy passes.
+
+## Phase 1 — Subscriptions and notifications
+
+Triage decisions are only useful when the right engineer hears about state changes. Subscriptions and notifications are how Anchore Enterprise pushes those changes out to your endpoints — webhook, Slack, email, GitHub, Jira, or SIEM.
+
+> [!IMPORTANT]
+> In 6.0 alpha, the subscription and event surfaces are still served by the v5 catalog and key on raw image records (registry / repo / tag), not on the app/version asset model. The subscriptions you activate here will keep the underlying image record fresh; the v6 asset built on top of that record will reflect the refreshed data the next time you list vulnerabilities. Bridging subscriptions into the asset model directly is on the roadmap.
+
+### The subscription types that matter for remediation
+
+| Type | What it does | Typical use |
+|---|---|---|
+| `tag_update` | New analysis when the same tag is re-pushed. | Catch supply-chain replacements where someone overwrites `:latest` or `:13`. |
+| `vuln_update` | New analysis-pass when feed data changes for a known image. | Catch new CVEs published against software you've already scanned. |
+| `policy_eval` | Re-run policy evaluation when the bound policy or the vulnerability picture changes. | Catch findings that newly cross a `stop` threshold. |
+| `analysis_update` | Notify when an analysis completes. | Drive downstream pipelines that consume SBOMs. |
+
+`tag_update` was already activated against `docker.io/library/postgres:13` in Visibility Phase 3. Let's add the other two for the same image — those are the ones that close the remediation feedback loop.
+
+```bash
+anchorectl subscription activate docker.io/library/postgres:13 vuln_update
+anchorectl subscription activate docker.io/library/postgres:13 policy_eval
+```
+
+List the active subscriptions to confirm:
+
+```bash
+anchorectl subscription list
+```
+
+Output (truncated):
+
+```
+ ✔ List subscription
+┌──────────────────────────────────┬─────────────────┬────────┐
+│ KEY                              │ TYPE            │ ACTIVE │
+├──────────────────────────────────┼─────────────────┼────────┤
+│ docker.io/library/postgres:13    │ tag_update      │ true   │
+│ docker.io/library/postgres:13    │ vuln_update     │ true   │
+│ docker.io/library/postgres:13    │ policy_eval     │ true   │
+│ docker.io/library/postgres       │ repo_update     │ true   │
+└──────────────────────────────────┴─────────────────┴────────┘
+```
+
+By default Anchore Enterprise runs `vulnerability_scan` every 14400 seconds (4 hours) and `policy_eval` every 3600 seconds (1 hour); both timers are configurable on the deployment side.
+
+### Notification endpoints
+
+When a subscription fires it produces an *event*. Events are what get routed to your endpoints. List recent events:
+
+```bash
+anchorectl event list
+```
+
+Endpoints (webhook, email, GitHub issues, Jira, Slack, MS Teams, SIEM forwarders) are configured per-deployment. In 6.0 alpha the management surface for those endpoints is the Web UI under `/system/notifications` and the `system_integrations` API — `anchorectl system integration` only supports `list`, `get`, and `delete`. To add a webhook, navigate to **System → Notifications → Endpoints** in the UI and provide the URL, optional auth header, and the subscription types it should receive.
+
+> [!TIP]
+> A common starter setup for a development team:
+> - Critical / KEV → page on-call (PagerDuty webhook).
+> - New `stop` finding on the production version → Slack #security-alerts.
+> - Any `warn` → daily digest email to the application team.
+>
+> All three are the same Anchore subscription / notification plumbing — only the endpoint routing differs.
+
+### See it in the UI
+
+Open the Web UI at `/events`. Each event has a payload (the same JSON you'd see at the API), a timestamp, and the subscription that produced it. When you eventually attach a webhook, that payload is what it'll deliver.
+
+## Phase 2 — Recommended actions in the Web UI
+
+The Action Workbench is where remediation goes from "we found something" to "someone has a ticket." It lives in the Web UI; there's no anchorectl surface for it in 6.0 alpha.
+
+The workflow follows the same trail you've already walked in the CLI, but with the suggestion / hand-off step layered on top.
+
+1. **Open the application.** Navigate to `/applications` and select `app`, then `v1.0.0`. You'll land on the version view showing the four assets and the latest policy status.
+2. **Open the policy compliance page** for `v1.0.0`. Below the summary donut you'll see the list of findings from Phase 5 of Policy Enforcement — the `stop` findings that drove the `fail` status and the `warn` findings around them. The Middle-loop phases below (VEX in Phase 3, allowlists in Phase 4) will trim this list further; for now the UI walk-through is the orientation.
+3. **Pull recommendations for a finding.** Click into one of the remaining `stop` findings (e.g. `CVE-2020-14343` in PyYAML), open the tools menu on the right of its row, and choose **Show remediation suggestions**. Anchore Enterprise will surface the upgrade path (`PyYAML 5.4`), the relevant advisory link, and any *rule-creator recommendations* that the policy bundle's author embedded in the rule's description.
+4. **Add a note** describing what you intend to do (or who you're routing it to), and click **Add to Action Workbench**.
+5. **Open the Action Workbench tab.** From here, push the queued actions to the endpoints you've configured under **System → Integrations**:
+   - GitHub issues — opens an issue against the configured repository.
+   - Jira — creates a ticket in the configured project.
+   - Custom webhook — POSTs the action payload to a URL of your choice.
+
+> [!NOTE]
+> You can switch between policies on the compliance page using the dropdown on the right. Selecting a non-active policy gives you a **preview** of what evaluation under that policy would look like — it does not change the binding on the app, and it does not produce a stored `policy status` record. To change the binding, use `anchorectl app update app --policy-id <id>` as in Policy Enforcement Phase 4.
+
+> [!IMPORTANT]
+> The compliance page surfaces both **policy findings** (from the bundle) and **alerts** (from the per-account alerts API). Alerts are stateful — opened when a subscribed tag starts failing policy, closed when all findings are addressed. There is no anchorectl support for alerts in 6.0 alpha; manage them via the Web UI or the `/alerts/compliance-violations` API directly. Once you have a webhook configured, alert transitions are a natural input to whatever ticket system your team already uses.
+
+## Phase 3 — Triage with VEX beyond `not_affected`
 
 In Inspection you set `(CVE-2019-10906, Jinja2 2.10)` to `not_affected / vulnerable_code_not_in_execute_path` because the Python app never renders user-supplied templates. That suppressed the finding cleanly. The other 6.0 VEX statuses cover the cases where the vulnerability *is* relevant but you want to communicate the state to downstream consumers — and to policy evaluation — without pretending it's gone.
 
 ### `affected` — yes, we know; here's what we're going to do
 
-The Python application's `requests==2.19.1` pin trips `CVE-2018-18074`. We'll fix this in Phase 7 by bumping the dependency, but for now let the policy and any downstream VEX consumer know we've triaged it.
+The Python application's `requests==2.19.1` pin trips `CVE-2018-18074`. We'll fix this in Phase 6 by bumping the dependency, but for now let the policy and any downstream VEX consumer know we've triaged it.
 
 ```bash
 anchorectl app version vex add v1.0.0 \
@@ -97,11 +180,11 @@ You'll see all three annotations — the `not_affected` from Inspection, plus th
 > [!TIP]
 > If you change your mind — for example, the upstream supplier delivers a fixed SBOM — update the annotation rather than deleting and re-adding. `anchorectl app version vex update <id> --status fixed --action-statement "Resolved in v1.0.1 by ingesting supplier SBOM rev 2026-05-15."` keeps the audit trail intact.
 
-## Phase 3 — Bundle-level allowlists
+## Phase 4 — Bundle-level allowlists
 
 VEX is the right tool when the judgement is per-version and evidence-backed. Allowlists are the right tool when the judgement belongs to the policy itself — a blanket "for this rule on this trigger, give us a pass" that applies to every version the bundle evaluates, ideally with an expiry so the exception doesn't outlive its reason.
 
-Let's record one against `CVE-2021-44228+log4j-core` as a *platform-managed* waiver — we already noted in Phase 2 that the upstream supplier owns this dependency, and we don't want it failing every version while we wait. The waiver expires on `2026-06-30`, giving a hard deadline for follow-up.
+Let's record one against `CVE-2021-44228+log4j-core` as a *platform-managed* waiver — we already noted in Phase 3 that the upstream supplier owns this dependency, and we don't want it failing every version while we wait. The waiver expires on `2026-06-30`, giving a hard deadline for follow-up.
 
 Open `./assets/policies/lab-policy.json` and replace the empty `allowlists` and `sbom_mappings` arrays with these blocks. (Keep `rule_sets` exactly as it was.)
 
@@ -173,7 +256,7 @@ The remaining `CVE-2021-44228` finding now has `"allowlisted": true` and an `all
 > - **VEX `not_affected`** when you can justify *why this code in this release is not exploitable*. Travels with the version. Survives policy changes.
 > - **Allowlist** when the exception belongs to the bundle. Applies to every version. Best with an expiry. Doesn't carry evidence the same way VEX does.
 
-## Phase 4 — Time-bound rules
+## Phase 5 — Time-bound rules
 
 The current `warn-high-with-fix` rule fires the moment a fix is available. That's accurate but ungenerous — engineers need *some* runway between "an advisory dropped" and "your build starts complaining." Time-bound parameters let the rule grant that runway automatically.
 
@@ -231,95 +314,7 @@ The Python application's `CVE-2018-18074` (`requests`) and the other Highs we su
 >
 > The two together encode "you have two weeks of warning and four weeks of grace" cleanly into the bundle.
 
-## Phase 5 — Subscriptions and notifications
-
-Triage decisions are only useful when the right engineer hears about state changes. Subscriptions and notifications are how Anchore Enterprise pushes those changes out to your endpoints — webhook, Slack, email, GitHub, Jira, or SIEM.
-
-> [!IMPORTANT]
-> In 6.0 alpha, the subscription and event surfaces are still served by the v5 catalog and key on raw image records (registry / repo / tag), not on the app/version asset model. The subscriptions you activate here will keep the underlying image record fresh; the v6 asset built on top of that record will reflect the refreshed data the next time you list vulnerabilities. Bridging subscriptions into the asset model directly is on the roadmap.
-
-### The subscription types that matter for remediation
-
-| Type | What it does | Typical use |
-|---|---|---|
-| `tag_update` | New analysis when the same tag is re-pushed. | Catch supply-chain replacements where someone overwrites `:latest` or `:13`. |
-| `vuln_update` | New analysis-pass when feed data changes for a known image. | Catch new CVEs published against software you've already scanned. |
-| `policy_eval` | Re-run policy evaluation when the bound policy or the vulnerability picture changes. | Catch findings that newly cross a `stop` threshold. |
-| `analysis_update` | Notify when an analysis completes. | Drive downstream pipelines that consume SBOMs. |
-
-`tag_update` was already activated against `docker.io/library/postgres:13` in Visibility Phase 3. Let's add the other two for the same image — those are the ones that close the remediation feedback loop.
-
-```bash
-anchorectl subscription activate docker.io/library/postgres:13 vuln_update
-anchorectl subscription activate docker.io/library/postgres:13 policy_eval
-```
-
-List the active subscriptions to confirm:
-
-```bash
-anchorectl subscription list
-```
-
-Output (truncated):
-
-```
- ✔ List subscription
-┌──────────────────────────────────┬─────────────────┬────────┐
-│ KEY                              │ TYPE            │ ACTIVE │
-├──────────────────────────────────┼─────────────────┼────────┤
-│ docker.io/library/postgres:13    │ tag_update      │ true   │
-│ docker.io/library/postgres:13    │ vuln_update     │ true   │
-│ docker.io/library/postgres:13    │ policy_eval     │ true   │
-│ docker.io/library/postgres       │ repo_update     │ true   │
-└──────────────────────────────────┴─────────────────┴────────┘
-```
-
-By default Anchore Enterprise runs `vulnerability_scan` every 14400 seconds (4 hours) and `policy_eval` every 3600 seconds (1 hour); both timers are configurable on the deployment side.
-
-### Notification endpoints
-
-When a subscription fires it produces an *event*. Events are what get routed to your endpoints. List recent events:
-
-```bash
-anchorectl event list
-```
-
-Endpoints (webhook, email, GitHub issues, Jira, Slack, MS Teams, SIEM forwarders) are configured per-deployment. In 6.0 alpha the management surface for those endpoints is the Web UI under `/system/notifications` and the `system_integrations` API — `anchorectl system integration` only supports `list`, `get`, and `delete`. To add a webhook, navigate to **System → Notifications → Endpoints** in the UI and provide the URL, optional auth header, and the subscription types it should receive.
-
-> [!TIP]
-> A common starter setup for a development team:
-> - Critical / KEV → page on-call (PagerDuty webhook).
-> - New `stop` finding on the production version → Slack #security-alerts.
-> - Any `warn` → daily digest email to the application team.
->
-> All three are the same Anchore subscription / notification plumbing — only the endpoint routing differs.
-
-### See it in the UI
-
-Open the Web UI at `/events`. Each event has a payload (the same JSON you'd see at the API), a timestamp, and the subscription that produced it. When you eventually attach a webhook, that payload is what it'll deliver.
-
-## Phase 6 — Recommended actions in the Web UI
-
-The Action Workbench is where remediation goes from "we found something" to "someone has a ticket." It lives in the Web UI; there's no anchorectl surface for it in 6.0 alpha.
-
-The workflow follows the same trail you've already walked in the CLI, but with the suggestion / hand-off step layered on top.
-
-1. **Open the application.** Navigate to `/applications` and select `app`, then `v1.0.0`. You'll land on the version view showing the four assets and the latest policy status.
-2. **Open the policy compliance page** for `v1.0.0`. Below the summary donut you'll see the list of findings from Phase 4 of Policy Enforcement — minus the entries you VEX-suppressed and allowlist-waived in Phases 2 and 3 above.
-3. **Pull recommendations for a finding.** Click into one of the remaining `stop` findings (e.g. `CVE-2020-14343` in PyYAML), open the tools menu on the right of its row, and choose **Show remediation suggestions**. Anchore Enterprise will surface the upgrade path (`PyYAML 5.4`), the relevant advisory link, and any *rule-creator recommendations* that the policy bundle's author embedded in the rule's description.
-4. **Add a note** describing what you intend to do (or who you're routing it to), and click **Add to Action Workbench**.
-5. **Open the Action Workbench tab.** From here, push the queued actions to the endpoints you've configured under **System → Integrations**:
-   - GitHub issues — opens an issue against the configured repository.
-   - Jira — creates a ticket in the configured project.
-   - Custom webhook — POSTs the action payload to a URL of your choice.
-
-> [!NOTE]
-> You can switch between policies on the compliance page using the dropdown on the right. Selecting a non-active policy gives you a **preview** of what evaluation under that policy would look like — it does not change the binding on the app, and it does not produce a stored `policy status` record. To change the binding, use `anchorectl app update app --policy-id <id>` as in Policy Enforcement Phase 4.
-
-> [!IMPORTANT]
-> The compliance page surfaces both **policy findings** (from the bundle) and **alerts** (from the per-account alerts API). Alerts are stateful — opened when a subscribed tag starts failing policy, closed when all findings are addressed. There is no anchorectl support for alerts in 6.0 alpha; manage them via the Web UI or the `/alerts/compliance-violations` API directly. Once you have a webhook configured, alert transitions are a natural input to whatever ticket system your team already uses.
-
-## Phase 7 — Ship the fix as `v1.0.1`
+## Phase 6 — Ship the fix as `v1.0.1`
 
 You've now used every remediation surface that doesn't change the artifact. The remaining `stop` findings on `v1.0.0` (`CVE-2020-14343` in PyYAML, the rest of the Highs that crossed the new 14-day clock) are genuine "fix it" cases — we need a new version with upgraded dependencies. This is the outer loop.
 
@@ -429,13 +424,12 @@ The diff is your release-note input: every package that changed, in one place.
 
 You closed the three loops of remediation for `app@v1.0.0` and shipped a clean `v1.0.1`:
 
-1. Mapped the **6.0 remediation model** — per-version VEX, per-bundle allowlists and time-bound rules, per-image subscriptions, Web UI Action Workbench, new app versions.
-2. Recorded **VEX annotations** beyond `not_affected` — `affected` for the `requests` upgrade and `under_investigation` for the supplier-managed log4j entry.
-3. Added a **bundle-level allowlist** with an expiry for `CVE-2021-44228+*`, and wired the necessary `sbom_mappings` entry to activate it.
-4. Gave Highs a **14-day grace period** with `max_days_since_fix`, so a freshly-fixed High doesn't immediately stop the build.
-5. Activated **`vuln_update` and `policy_eval` subscriptions** on the Postgres tag and surveyed how events flow to notification endpoints.
-6. Walked the **Action Workbench** in the Web UI — recommendations, notes, and the push to GitHub / Jira / webhook.
-7. Created `v1.0.1`, re-scanned the **upgraded Python application** as an asset, re-evaluated the policy, and diffed the package inventory against `v1.0.0`.
+1. Activated **`vuln_update` and `policy_eval` subscriptions** on the Postgres tag and surveyed how events flow to notification endpoints.
+2. Walked the **Action Workbench** in the Web UI — recommendations, notes, and the push to GitHub / Jira / webhook.
+3. Recorded **VEX annotations** beyond `not_affected` — `affected` for the `requests` upgrade and `under_investigation` for the supplier-managed log4j entry.
+4. Added a **bundle-level allowlist** with an expiry for `CVE-2021-44228+*`, and wired the necessary `sbom_mappings` entry to activate it.
+5. Gave Highs a **14-day grace period** with `max_days_since_fix`, so a freshly-fixed High doesn't immediately stop the build.
+6. Created `v1.0.1`, re-scanned the **upgraded Python application** as an asset, re-evaluated the policy, and diffed the package inventory against `v1.0.0`.
 
 Useful 5.x → 6.0 mappings:
 
