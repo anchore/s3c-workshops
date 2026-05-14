@@ -201,7 +201,7 @@ anchorectl app version vex add v1.0.0 \
   --justification vulnerable_code_not_in_execute_path \
   --impact-statement "The Flask routes in app.py never render user-supplied Jinja templates; the sandbox escape requires render_template_string() with attacker-controlled input, which is not present." \
   --action-statement "No action required for this release. Tracked for upgrade in v1.1.0." \
-  --comment "Reviewed by security-team on 2026-05-06"
+  --additional-details "Reviewed by security-team on 2026-05-06"
 ```
 
 The `--status` and `--justification` values come from the CycloneDX/OpenVEX vocabulary:
@@ -234,7 +234,7 @@ anchorectl app version vuln list v1.0.0 --app app -o json \
   | jq '.[] | select(.vulnerabilityId == "CVE-2019-10906") | {vulnerabilityId, packageName, packageVersion, severity}'
 ```
 
-Update an annotation as the situation evolves (status, justification, statements, comment all editable):
+Update an annotation as the situation evolves (status, justification, statements, additional details all editable):
 
 ```bash
 anchorectl app version vex update <vuln-annotation-id> \

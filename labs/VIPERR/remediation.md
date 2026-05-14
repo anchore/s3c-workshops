@@ -143,7 +143,7 @@ anchorectl app version vex add v1.0.0 \
   --pkg-version 2.19.1 \
   --status affected \
   --action-statement "Upgrade to requests 2.20.0 scheduled for v1.0.1." \
-  --comment "Triaged 2026-05-07 by security-team"
+  --additional-details "Triaged 2026-05-07 by security-team"
 ```
 
 `affected` does **not** suppress the finding — the policy will still warn (and we'd want it to, until we ship the fix). What it does is record the decision and put it in the CycloneDX VEX export so consumers of the release know the issue is acknowledged and on a path to resolution.
@@ -164,7 +164,7 @@ anchorectl app version vex add v1.0.0 \
   --pkg-version 2.14.1 \
   --status under_investigation \
   --action-statement "Awaiting fixed SBOM from upstream supplier; tracked in TKT-4421." \
-  --comment "Reviewed 2026-05-07; supplier acknowledged"
+  --additional-details "Reviewed 2026-05-07; supplier acknowledged"
 ```
 
 `under_investigation` is the honest answer when you've seen the finding but the decision isn't made yet. Like `affected`, it does not suppress.
