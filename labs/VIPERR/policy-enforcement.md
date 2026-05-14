@@ -84,10 +84,11 @@ Each rule is a small object:
   "gate": "vulnerabilities",
   "trigger": "package",
   "action": "stop",
+  "description": "Stop the build if any package has a Critical-severity vulnerability.",
   "params": [
-    {"name": "package_type",        "value": "all"},
+    {"name": "package_type", "value": "all"},
     {"name": "severity_comparison", "value": ">="},
-    {"name": "severity",            "value": "critical"}
+    {"name": "severity", "value": "critical"}
   ]
 }
 ```
