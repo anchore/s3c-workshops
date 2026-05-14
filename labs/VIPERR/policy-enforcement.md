@@ -144,6 +144,16 @@ anchorectl app get app -o json | jq '{name, policyId}'
 anchorectl policy activate viperr-lab-policy
 ```
 
+Output:
+
+```
+ ✔ Activate policy
+Name: VIPERR Lab Policy
+Policy Id: viperr-lab-policy
+Active: true
+Updated: 2026-05-14T13:36:48Z
+```
+
 For this module use **Option A** — it makes the binding explicit and lets the existing account default keep applying to anything else.
 
 > [!NOTE]
