@@ -53,7 +53,7 @@ A few things in that table matter for the rest of this module:
 
 - **Distro-specific feeds** (`ubuntu:22.04`, `debian:11`, `alpine:3.18`, `rhel:9` …) are the most authoritative source of OS-package vulnerability data for each distro. When Anchore Enterprise scans the Postgres or Ubuntu image, it matches OS packages against the corresponding distro feed first, falling back to NVD only when no distro entry exists. That's why the `namespace` field on a vulnerability record matters — it tells you which feed produced the match.
 - **Language ecosystem feeds** (`github:python`, `github:java`, `github:go`, `github:npm` …) drive matching for application-level dependencies — the Java archives in the Jenkins-style SBOM, the pinned versions in `requirements.txt`, and so on.
-- **NVD** (`nvd`) is the catch-all. It's used when nothing more specific applies, and it's always available as a cross-reference (`related_cves` on a match often points back here).
+- **NVD** (`nvd`) is the catch-all. It's used when nothing more specific applies, and it's always available as a cross-reference (`relatedCves` on a match often points back here).
 - **KEV** (`kev_db`) is CISA's Known Exploited Vulnerabilities catalog — vulnerabilities with confirmed in-the-wild exploitation. A match flagged `kev: true` is one you almost certainly want to act on.
 - **EPSS** (`epss_db`) is the Exploit Prediction Scoring System. Each CVE gets a score (0–1) representing the probability of exploitation in the next 30 days, and a percentile ranking. EPSS is great for prioritising the long tail of high-severity but unlikely-to-be-exploited findings.
 - **ClamAV** (`clamav_db`) is the malware-signature database used for centralized image scanning.
@@ -101,26 +101,25 @@ Output (single match):
 
 ```json
 {
-  "vulnerability_id": "CVE-2021-44228",
-  "namespace": "github:java",
-  "severity": "Critical",
-  "fix_state": "fixed",
-  "fix_versions": [
-    { "version": "2.15.0", "date": "2021-12-09T00:00:00Z", "kind": "advisory" }
+  "vulnerabilityId": "CVE-2022-37434",
+  "namespace": "alpine",
+  "severity": "critical",
+  "fixState": "fixed",
+  "fixVersions": [
+    { "version": "1.2.12-r2", "date": "2026-02-24T00:00:00Z", "kind": "first-observed" }
   ],
-  "related_cves": ["CVE-2021-44228"],
-  "package_name": "log4j-core",
-  "package_version": "2.14.1",
-  "package_type": "java-archive",
-  "purl": "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1",
-  "epss_score": 0.97,
-  "epss_percentile": 0.99987,
-  "kev": true,
-  "cvss_assessments": [
-    { "source": "nvd@nist.gov", "is_primary": true,
-      "v2_score": null, "v3_score": 10.0, "v4_score": null }
-  ],
-  "vex_status": null
+  "relatedCves": [],
+  "packageName": "zlib",
+  "packageVersion": "1.2.11-r3",
+  "packageType": "apk",
+  "purl": "pkg:apk/alpine/zlib@1.2.11-r3?arch=x86_64&distro=alpine-3.15.0",
+  "epssScore": 0.92745,
+  "epssPercentile": 0.99761,
+  "kev": false,
+  "cvssAssessments": [
+    { "source": "nvd@nist.gov", "isPrimary": true,
+      "v2Score": null, "v3Score": 9.8, "v4Score": null }
+  ]
 }
 ```
 
@@ -128,15 +127,14 @@ The fields worth knowing:
 
 | Field | What it tells you |
 |---|---|
-| `vulnerability_id` | The primary identifier — usually a `CVE-…` or a `GHSA-…`. |
-| `namespace` | The feed that produced the match (`github:java`, `nvd`, `debian:12`, `ubuntu:22.04`, …). Distro namespaces win over `nvd` when both apply. |
-| `severity` | Anchore Enterprise's normalised severity: `Critical`, `High`, `Medium`, `Low`, `Negligible`, `Unknown`. |
-| `fix_state` / `fix_versions` | Whether a fix exists and at which version. `kind: "advisory"` is the vendor advisory date; `"first-observed"` is the date Anchore Enterprise first saw the fix in a package repository. |
+| `vulnerabilityId` | The primary identifier — usually a `CVE-…` or a `GHSA-…`. |
+| `namespace` | The feed that produced the match (`alpine`, `debian:distro:debian:13`, `github:language:java-archive`, `github:language:python`, `nvd:cpe`, …). Distro and language namespaces win over `nvd:cpe` when both apply. |
+| `severity` | Anchore Enterprise's normalised severity, lowercased: `critical`, `high`, `medium`, `low`, `negligible`, `unknown`. |
+| `fixState` / `fixVersions` | Whether a fix exists and at which version. `kind: "advisory"` is the vendor advisory date; `"first-observed"` is the date Anchore Enterprise first saw the fix in a package repository. |
 | `kev` | `true` if the CVE is in CISA's Known Exploited Vulnerabilities catalog — confirmed real-world exploitation. |
-| `epss_score` / `epss_percentile` | Probability of exploitation in the next 30 days (0–1) and percentile ranking against all CVEs. |
-| `cvss_assessments` | Every CVSS score from every source — NVD, vendor advisories, etc. `is_primary: true` marks Anchore Enterprise's preferred source. |
-| `related_cves` | Cross-references — useful when a GHSA-… match has an underlying CVE-…. |
-| `vex_status` | If you've added a VEX annotation for this `(vulnerability, package)` pair under this version, the status is reflected here. We'll set one in Phase 5. |
+| `epssScore` / `epssPercentile` | Probability of exploitation in the next 30 days (0–1) and percentile ranking against all CVEs. May be `null` for older CVEs that aren't in EPSS. |
+| `cvssAssessments` | Every CVSS score from every source — NVD, vendor advisories, etc. `isPrimary: true` marks Anchore Enterprise's preferred source. |
+| `relatedCves` | Cross-references — useful when a `GHSA-…` match has an underlying `CVE-…`. |
 
 ## Phase 3 — Filter and prioritise
 
@@ -146,28 +144,30 @@ The CLI returns the full list; filtering is done client-side with `jq`. Four fil
 
 ```bash
 anchorectl app version vuln list v1.0.0 --app app -o json \
-  | jq '[.[] | select(.severity == "Critical" or .severity == "High")]'
+  | jq '[.[] | select(.severity == "critical" or .severity == "high")]'
 ```
 
 **2. Only matches with a fix available**
 
 ```bash
 anchorectl app version vuln list v1.0.0 --app app -o json \
-  | jq '[.[] | select(.fix_state == "fixed")]'
+  | jq '[.[] | select(.fixState == "fixed")]'
 ```
 
 **3. CISA KEV — known exploited in the wild**
 
 ```bash
 anchorectl app version vuln list v1.0.0 --app app -o json \
-  | jq '[.[] | select(.kev == true)] | sort_by(-.epss_score)'
+  | jq '[.[] | select(.kev == true)] | sort_by(.epssScore // -1) | reverse'
 ```
+
+The `// -1` coalesces a `null` EPSS score to `-1` so the sort is well-defined even when (as is common with KEV entries) EPSS data hasn't been published for the vulnerability. `reverse` flips ascending into descending, putting the highest-EPSS KEV entries first and the null-EPSS entries at the bottom.
 
 **4. Top 20 by EPSS — most likely to be exploited next**
 
 ```bash
 anchorectl app version vuln list v1.0.0 --app app -o json \
-  | jq '[.[] | select(.epss_score != null)] | sort_by(-.epss_score) | .[0:20]'
+  | jq '[.[] | select(.epssScore != null)] | sort_by(-.epssScore) | .[0:20]'
 ```
 
 > [!TIP]
@@ -175,7 +175,7 @@ anchorectl app version vuln list v1.0.0 --app app -o json \
 
 ## Phase 4 — Drill into a specific asset
 
-The CLI exposes vulnerabilities at the **version** level. To narrow to a single asset (say "what does the Postgres image specifically contribute?"), pull the asset details and the original SBOM, then cross-reference.
+The CLI exposes vulnerabilities at the **version** level. To narrow to a single asset (say "what does the Postgres image specifically contribute?"), pull the asset's metadata and cross-reference against the version-level vuln list.
 
 Get the asset's metadata — including the annotations you set in Visibility:
 
@@ -184,29 +184,10 @@ anchorectl app version asset get postgres \
   --app app --version v1.0.0 -o json | jq '{name, type, annotations, image_reference, system_metadata}'
 ```
 
-Pull back the SBOM that was stored for the asset:
-
-```bash
-anchorectl app version asset sbom get postgres \
-  --app app --version v1.0.0 \
-  --file ./postgres-asset-sbom.json
-```
-
-The returned SBOM is exactly what Anchore Enterprise is matching against — every package the asset contributes to the version-level view. Once you have the SBOM in hand, narrowing version-level vulnerabilities to those that came from this asset is a `jq` join on `package_name` + `package_version`. For a concrete example:
-
-```bash
-# package coordinates from this asset's SBOM
-jq -r '[.artifacts[] | "\(.name)\(.version)"] | unique | .[]' \
-  ./postgres-asset-sbom.json > /tmp/postgres-pkgs.txt
-
-# version-level vulns whose package matches
-anchorectl app version vuln list v1.0.0 --app app -o json \
-  | jq --slurpfile keys /tmp/postgres-pkgs.txt \
-       '[.[] | select((.package_name + "" + .package_version) as $k | $keys[0] | index($k))]'
-```
+In Visibility Phase 5 you also saw `app version asset sbom get` round-trip the stored SBOM for an asset to disk. That SBOM is exactly what Anchore Enterprise is matching against; if you need an asset-scoped vuln list, the pattern is to pull the SBOM, extract its package coordinates, and `jq`-filter the version-level vuln list to the matching rows. You already have the artifacts to do this — the command is the same one you ran in Visibility.
 
 > [!NOTE]
-> A first-class "vulnerabilities for this specific asset" CLI command isn't in the asset surface at this alpha — the version-level rollup with `jq` filtering covers the same ground. Each asset's SBOM is round-trippable, so any analysis you can do with an SBOM file you can do here.
+> A first-class "vulnerabilities for this specific asset" CLI command isn't in the asset surface at this alpha — the version-level rollup with `jq` filtering covers the same ground, and the per-asset SBOM round-trip from Visibility Phase 5 is the bridge.
 
 ## Phase 5 — Triage with VEX annotations
 
@@ -251,11 +232,11 @@ List the annotations you've made for this version:
 anchorectl app version vex list v1.0.0 --app app
 ```
 
-Re-run the version-level vuln list and notice the `vex_status` field on `CVE-2019-10906` for `Jinja2 2.10` is now populated:
+Re-run the version-level vuln list and pick out the matching entry to confirm it's still surfaced. A `not_affected` VEX annotation doesn't remove the underlying match from this list — it tags it so downstream consumers (the CycloneDX VEX export in Phase 6) and policy evaluation (the Policy Enforcement module) can apply it:
 
 ```bash
 anchorectl app version vuln list v1.0.0 --app app -o json \
-  | jq '.[] | select(.vulnerability_id == "CVE-2019-10906") | {vulnerability_id, package_name, package_version, severity, vex_status}'
+  | jq '.[] | select(.vulnerabilityId == "CVE-2019-10906") | {vulnerabilityId, packageName, packageVersion, severity}'
 ```
 
 Update an annotation as the situation evolves (status, justification, statements, comment all editable):
@@ -333,7 +314,7 @@ Useful 5.x → 6.0 mappings to keep in mind:
 
 | 5.x                                              | 6.0                                                                  |
 |--------------------------------------------------|----------------------------------------------------------------------|
-| `image vulnerabilities <image> -t os/non-os/all` | `app version vuln list <version> --app <app>` (filter via `jq` on namespace / package_type) |
+| `image vulnerabilities <image> -t os/non-os/all` | `app version vuln list <version> --app <app>` (filter via `jq` on `namespace` / `packageType`) |
 | `image content <image> -t java`                  | `app version package list <version> --app <app>` for the package inventory |
 | `image content <image> -t secret_search`         | Per-asset secret/malware/file content surfaces are not exposed at the asset CLI in 6.0 alpha; expected in a later iteration |
 | `image ancestors <digest>`                       | No equivalent in the v6 asset model yet |
