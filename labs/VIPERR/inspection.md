@@ -204,6 +204,16 @@ anchorectl app version vex add v1.0.0 \
   --additional-details "Reviewed by security-team on 2026-05-06"
 ```
 
+Output:
+
+```
+ ✔ Added vex
+ID: <job-uuid>
+Vuln ID: CVE-2019-10906
+Status: not_affected
+Package: Jinja2
+```
+
 The `--status` and `--justification` values come from the CycloneDX/OpenVEX vocabulary:
 
 | `--status` | Meaning |
