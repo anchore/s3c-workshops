@@ -173,7 +173,7 @@ anchorectl app version vuln list v1.0.0 --app app -o json \
 > [!TIP]
 > If your org's prioritisation rule is "Critical/High **and** (KEV true **or** EPSS percentile ≥ 0.95)", that's one `jq` selector away — and the same rule expressed as an Anchore Enterprise policy will give you pass/fail evaluation, which is the next module's territory.
 
-## Phase 4 — Drill into a specific asset
+## Phase 4 — Drill into vulns in a specific asset
 
 The CLI exposes vulnerabilities at the **version** level. To narrow to a single asset (say "what does the Postgres image specifically contribute?"), pull the asset's metadata and cross-reference against the version-level vuln list.
 
@@ -183,11 +183,6 @@ Get the asset's metadata — including the annotations you set in Visibility:
 anchorectl app version asset get postgres \
   --app app --version v1.0.0 -o json | jq '{name, type, annotations, image_reference, system_metadata}'
 ```
-
-In Visibility Phase 5 you also saw `app version asset sbom get` round-trip the stored SBOM for an asset to disk. That SBOM is exactly what Anchore Enterprise is matching against; if you need an asset-scoped vuln list, the pattern is to pull the SBOM, extract its package coordinates, and `jq`-filter the version-level vuln list to the matching rows. You already have the artifacts to do this — the command is the same one you ran in Visibility.
-
-> [!NOTE]
-> A first-class "vulnerabilities for this specific asset" CLI command isn't in the asset surface at this alpha — the version-level rollup with `jq` filtering covers the same ground, and the per-asset SBOM round-trip from Visibility Phase 5 is the bridge.
 
 ## Phase 5 — Triage with VEX annotations
 
