@@ -276,7 +276,7 @@ anchorectl app version export sbom v1.0.0 \
 ```
 
 > [!NOTE]
-> This is different from `app version asset sbom get` (which you used in Phase 4). `asset sbom get` returns the original SBOM Anchore Enterprise stored for a single asset, in whatever format you ingested it. `app version export sbom` aggregates the package inventory of every asset under the version and emits a single CycloneDX JSON document — convenient for a release-level hand-off, less faithful to each asset's original format.
+> This is different from `app version asset sbom get` which returns the original SBOM Anchore Enterprise stored for a single asset, in whatever format you ingested it. The command `app version export sbom` aggregates the package inventory of every asset under the version and emits a single CycloneDX JSON document — convenient for a release-level hand-off.
 
 **Vulnerability report (CSV)** — the canonical "send this to your security team / GRC tool" artifact:
 
