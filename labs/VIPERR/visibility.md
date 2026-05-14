@@ -55,7 +55,7 @@ anchorectl app list
 > [!NOTE]
 > An application can also be created with `--policy-id` to bind it to a specific policy at creation time. We'll cover policy assignment in the Policy Enforcement module.
 
-Now add the first version. Versions live under an application, so you have to tell anchorectl which app the version belongs to with `--app`.
+You'll notice that your newly added application has no versions listed. Now add the first version. Versions live under an application, so you have to tell anchorectl which app the version belongs to with `--app`.
 
 ```bash
 anchorectl app version add v1.0.0 \
@@ -67,17 +67,17 @@ anchorectl app version add v1.0.0 \
 Output:
 
 ```
- ✔ Created app version
+  ✔ Added version
 Name: v1.0.0
-App: app
+ID: <version_uuid>
+Description: First release with Docker Support
 Status: in_progress
-ID: <version-uuid>
 ```
 
 List the versions for the app:
 
 ```bash
-anchorectl app version list --app app
+anchorectl app version list app
 ```
 
 Anything you ingest from here on will be attached to a specific `app` + `version`. You can supply these explicitly with `--app` / `--version` on every command, or you can set environment variables to default them:
@@ -126,19 +126,17 @@ anchorectl app version asset add sbom ./assets/sboms/my_java_app.spdx.json \
 
 The `--wait` flag tells anchorectl to block until the underlying ingestion job has completed. Without `--wait` you get the job ID back immediately and can poll separately — we'll cover that in Phase 3.
 
-Output (truncated):
+Output:
 
 ```
- ✔ Submitted SBOM asset
-Asset: my-java-app
+ ✔ Added SBOM asset
+Name: my-java-app
+ID: <job-uuid>
 Type: application
-Version: v1.0.0
-Job ID: <job-uuid>
-Status: complete
 ```
 
 > [!NOTE]
-> **What just happened:** Anchore Enterprise queued a job that decomposed the SBOM into packages, persisted them under the version, and ran a vulnerability scan against the deduplicated package set. All of this happens asynchronously through the Jobs API.
+> **What just happened:** Anchore Enterprise queued a job that decomposed the uploaded SBOM into packages, persisted them under the version, and ran a vulnerability scan against the deduplicated package set. All of this happens asynchronously through the Jobs API.
 
 The same command handles every supported format the same way — drop a CycloneDX XML, an SPDX tag-value, or an SPDX 3 JSON document in and the server detects and routes it automatically. Adjust the `--type` and `--annotations` to fit what you're ingesting (for example `--type firmware` for a partner-supplied embedded device SBOM, `--type library` for an upstream library hand-off).
 
@@ -168,16 +166,14 @@ anchorectl app version asset add container-image-remote docker.io/library/postgr
   --wait
 ```
 
-Output (truncated):
+Output:
 
 ```
  ✔ Submitted container image asset
-Asset: postgres
+ ✔ Added image asset
+Name: postgres
+ID: <job-uuid>
 Type: container
-Version: v1.0.0
-Image Reference: docker.io/library/postgres:13
-Job ID: <job-uuid>
-Status: complete
 ```
 
 > [!NOTE]
@@ -200,16 +196,12 @@ anchorectl app version asset add container-image docker.io/library/ubuntu:jammy 
   --wait
 ```
 
-Output (truncated):
+Output:
 
 ```
- ✔ Submitted container image asset
-Asset: ubuntu-jammy
+Name: jammy
+ID: <job-uuid>
 Type: container
-Version: v1.0.0
-Image Reference: docker.io/library/ubuntu:jammy
-Job ID: <job-uuid>
-Status: complete
 ```
 
 > [!NOTE]
@@ -291,11 +283,9 @@ Output (truncated):
 
 ```
  ✔ Analyzed filesystem asset
-Asset: my-python-app
+Name: my-python-app
+ID: <job-uuid>
 Type: application
-Version: v1.0.0
-Job ID: <job-uuid>
-Status: complete
 ```
 
 > [!NOTE]
@@ -353,7 +343,7 @@ anchorectl app version vuln list v1.0.0 --app app
 
 This is the version-level view: deduplicated CVE matches across the imported Java SBOM, the centrally-analyzed Postgres image, the locally-analyzed Ubuntu image, and the Python application's pinned dependencies — all treated as one release. The Inspection module dives deeper into filtering, severity, and fix data.
 
-Audit the ingestion history for the app:
+You can even audit the ingestion history for the app by inspecting the jobs created in the previous phases:
 
 ```bash
 anchorectl app job list app --status complete
@@ -374,6 +364,15 @@ anchorectl app version asset update my-java-app \
   --app app \
   --version v1.0.0 \
   --annotations "supplier=apache-foundation,reviewed-by=security-team,reviewed-on=2026-05-06"
+```
+
+Output:
+
+```
+ ✔ Update asset
+Name: my-java-app
+ID: <job-uuid>
+Type: application
 ```
 
 > [!NOTE]
@@ -415,7 +414,7 @@ anchorectl app version asset get python-worker --app app --version v1.0.0 -o jso
 
 ## Recap
 
-You created an application, gave it a version, and attached four assets to that version: an imported SBOM (the Java application hand-off), a centrally-analyzed container (Postgres), a locally-analyzed container (Ubuntu Jammy), and a filesystem-derived SBOM (the Python application). Everything you ingested is automatically scoped to `app@v1.0.0` — there's no follow-up step to associate artifacts with the release.
+You created an application, gave it a version, and attached four assets to that version: an imported SBOM (the Java application hand-off), a centrally-analyzed container (Postgres), a locally-analyzed container (Ubuntu Jammy), and a filesystem-derived SBOM (the Python application). 
 
 The 6.0 asset-add commands all live under `app version asset add <type>`:
 
