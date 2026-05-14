@@ -53,17 +53,15 @@ Before authoring our own bundle, see what's already loaded. Anchore Enterprise s
 anchorectl policy list
 ```
 
-Output (truncated):
+Output:
 
 ```
- ✔ List policy
-┌──────────────────────────────────────┬─────────────────────────────────┬────────┬──────────────────────┐
-│ POLICY ID                            │ NAME                            │ ACTIVE │ LAST UPDATED         │
-├──────────────────────────────────────┼─────────────────────────────────┼────────┼──────────────────────┤
-│ anchore_security_only                │ Anchore Security Only           │ false  │ 2026-04-21T00:00:00Z │
-│ anchore_default_policy               │ Default policy                  │ true   │ 2026-04-21T00:00:00Z │
-│ anchore_cis_1.13.0_base              │ Anchore CIS 1.13.0 base         │ false  │ 2026-04-21T00:00:00Z │
-└──────────────────────────────────────┴─────────────────────────────────┴────────┴──────────────────────┘
+ ✔ Fetched policies
+┌───────────────────────────────────────┬────────────────────────┬────────┬──────────────────────┐
+│ NAME                                  │ POLICY ID              │ ACTIVE │ UPDATED              │
+├───────────────────────────────────────┼────────────────────────┼────────┼──────────────────────┤
+│ Anchore Enterprise - Secure v20260101 │ anchore_secure_default │ true   │ 2026-05-13T11:24:28Z │
+└───────────────────────────────────────┴────────────────────────┴────────┴──────────────────────┘
 ```
 
 Any of these can serve as a starting point — the security-only and CIS bundles are common templates customers extend. For the rest of this module we'll author our own from scratch so you see exactly what goes into a bundle.
