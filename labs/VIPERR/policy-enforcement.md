@@ -105,9 +105,10 @@ Output:
 
 ```
  ✔ Added policy
-Policy Id: viperr-lab-policy
 Name: VIPERR Lab Policy
+Policy Id: viperr-lab-policy
 Active: false
+Updated: 2026-05-14T13:34:11Z
 ```
 
 Confirm it's now in the catalog:
