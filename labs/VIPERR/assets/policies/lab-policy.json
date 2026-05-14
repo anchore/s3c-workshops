@@ -49,5 +49,6 @@
     }
   ],
   "allowlists": [],
+  "mappings": [],
   "sbom_mappings": []
 }
