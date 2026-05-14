@@ -135,7 +135,7 @@ anchorectl app update app --policy-id viperr-lab-policy
 Verify:
 
 ```bash
-anchorectl app get app -o json | jq '{name, active_policy_id}'
+anchorectl app get app -o json | jq '{name, policyId}'
 ```
 
 **Option B — Account-level activation:** make `viperr-lab-policy` the account default. Apps without their own `policy-id` will use it.
