@@ -125,7 +125,7 @@ You should see `viperr-lab-policy` in the table alongside the reference policies
 
 ## Phase 4 — Bind the policy to your application
 
-Two ways to make `viperr-lab-policy` the policy that gets evaluated against `app`:
+Two ways to make `viperr-lab-policy` the policy that gets evaluated against `app`. For this module use **Option A** — it makes the binding explicit to an application:
 
 **Option A — App-level binding (preferred):** set the policy on the application directly. This is the explicit, traceable choice — the policy travels with the app record and is visible in `app get`.
 
@@ -154,8 +154,6 @@ Policy Id: viperr-lab-policy
 Active: true
 Updated: 2026-05-14T13:36:48Z
 ```
-
-For this module use **Option A** — it makes the binding explicit and lets the existing account default keep applying to anything else.
 
 > [!NOTE]
 > Changing the active policy doesn't re-evaluate prior versions on its own. Existing `app version policy status get` results were produced against the policy that was active *at the time of evaluation*; the next evaluation cycle will use the new binding.
