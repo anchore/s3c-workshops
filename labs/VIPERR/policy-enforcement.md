@@ -8,7 +8,7 @@ In Anchore Enterprise 6.0 a **policy** is a JSON bundle of rules. Each rule name
 > This module assumes you completed the [Visibility module](visibility.md) and the [Inspection module](inspection.md). It uses the same `app`, `v1.0.0` version, and the four assets attached to it.
 
 > [!NOTE]
-> **Alpha-state caveat:** in 6.0 alpha the only ported gate is `vulnerabilities` (with three triggers — `package`, `denylist`, `stale_feed_data`) plus a small `always` gate used internally. v5.x had many more gates (Dockerfile, files, secrets, malware, packages, …); those are expected back as 6.0 progresses. Everything in this module is built around the gate that's available today and applies cleanly to the broader gate set when it lands.
+> **Application Policies:** in 6.0 the only gate applied to applications is `vulnerabilities` (with three triggers — `package`, `denylist`, `stale_feed_data`) plus a small `always` gate used internally. 
 
 ## How this lab module is structured
 
