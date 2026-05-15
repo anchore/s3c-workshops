@@ -1,6 +1,6 @@
 # Remediation
 
-The Policy Enforcement module turned the inspection data into pass/fail findings for `app@v1.0.0` — `Status: fail`, with `stop-on-critical` firing on `CVE-2021-44228` (log4j-core) and `CVE-2020-14343` (PyYAML), `stop-on-kev` firing on the log4j entry, and `warn-high-with-fix` warning on a handful of others. Remediation is how you close those loops — communicating decisions to downstream consumers, granting evidence-backed exceptions, putting fixes on a clock, and shipping a new version with the issues actually resolved.
+The Policy Enforcement module turned the inspection data into pass/fail findings for `app@v1.0.0` — `Status: fail`, with the bundle's two rules between them stopping on `CVE-2021-44228` (log4j-core, caught both as a CISA KEV match and as a Critical-severity match), `CVE-2020-14343` (PyYAML, Critical), and every other High in the Python application. Remediation is how you close those loops — communicating decisions to downstream consumers, granting evidence-backed exceptions, putting fixes on a clock, and shipping a new version with the issues actually resolved.
 
 In Anchore Enterprise 6.0 there are three loops of remediation, and this module touches each:
 
@@ -11,7 +11,7 @@ In Anchore Enterprise 6.0 there are three loops of remediation, and this module 
 | **Outer** | You change the artifact: a bumped dependency, a different base image, a new SBOM from upstream. | A new app version with the fixed assets attached. |
 
 > [!IMPORTANT]
-> This module assumes you completed the [Visibility](visibility.md), [Inspection](inspection.md), and [Policy Enforcement](policy-enforcement.md) modules. It uses the same `app`, the `v1.0.0` version, the four assets attached to it, the VEX annotation against `CVE-2019-10906` in `Jinja2 2.10`, and the `viperr-lab-policy` bundle bound to `app`.
+> This module assumes you completed the [Visibility](visibility.md), [Inspection](inspection.md), and [Policy Enforcement](policy-enforcement.md) modules. It uses the same `app`, the `v1.0.0` version, the four assets attached to it, and the `viperr-lab-policy` bundle bound to `app`.
 
 **Subscriptions are per-image-or-repo.** A `vuln_update` subscription on a tag triggers a re-scan when feeds change; a `policy_eval` subscription triggers a re-evaluation. These remain v5-backed in 6.0 alpha — the result of a re-scan flows into the v5 catalog, and the same record is what backs the v6 asset.
 
@@ -31,7 +31,7 @@ Six phases, fully sequential:
 
 1. **Subscriptions and notifications** — wire continuous re-scan and re-evaluation to an endpoint.
 2. **Recommended actions in the Web UI** — drive remediation through the Action Workbench.
-3. **Triage with VEX beyond `not_affected`** — record `affected` and `under_investigation` decisions for findings you can't immediately fix.
+3. **Triage with VEX annotations** — record `not_affected`, `affected`, and `under_investigation` decisions against findings.
 4. **Bundle-level allowlists** — add a long-lived, policy-wide exception with an expiry.
 5. **Time-bound rules** — give Highs a grace period before they start failing the build.
 6. **Ship the fix as `v1.0.1`** — upgrade the Python application's dependencies and create a new app version with the fixed asset attached.
@@ -112,7 +112,7 @@ The Action Workbench is where remediation goes from "we found something" to "som
 The workflow follows the same trail you've already walked in the CLI, but with the suggestion / hand-off step layered on top.
 
 1. **Open the application.** Navigate to `/applications` and select `app`, then `v1.0.0`. You'll land on the version view showing the four assets and the latest policy status.
-2. **Open the policy compliance page** for `v1.0.0`. Below the summary donut you'll see the list of findings from Phase 5 of Policy Enforcement — the `stop` findings that drove the `fail` status and the `warn` findings around them. The Middle-loop phases below (VEX in Phase 3, allowlists in Phase 4) will trim this list further; for now the UI walk-through is the orientation.
+2. **Open the policy compliance page** for `v1.0.0`. Below the summary donut you'll see the list of findings from Phase 5 of Policy Enforcement — the `stop` findings that drove the `fail` status (every match the bundle's two rules picked up). The Middle-loop phases below (VEX in Phase 3, allowlists in Phase 4, time-bound rules in Phase 5) will trim this list further; for now the UI walk-through is the orientation.
 3. **Pull recommendations for a finding.** Click into one of the remaining `stop` findings (e.g. `CVE-2020-14343` in PyYAML), open the tools menu on the right of its row, and choose **Show remediation suggestions**. Anchore Enterprise will surface the upgrade path (`PyYAML 5.4`), the relevant advisory link, and any *rule-creator recommendations* that the policy bundle's author embedded in the rule's description.
 4. **Add a note** describing what you intend to do (or who you're routing it to), and click **Add to Action Workbench**.
 5. **Open the Action Workbench tab.** From here, push the queued actions to the endpoints you've configured under **System → Integrations**:
@@ -126,13 +126,65 @@ The workflow follows the same trail you've already walked in the CLI, but with t
 > [!IMPORTANT]
 > The compliance page surfaces both **policy findings** (from the bundle) and **alerts** (from the per-account alerts API). Alerts are stateful — opened when a subscribed tag starts failing policy, closed when all findings are addressed. There is no anchorectl support for alerts in 6.0 alpha; manage them via the Web UI or the `/alerts/compliance-violations` API directly. Once you have a webhook configured, alert transitions are a natural input to whatever ticket system your team already uses.
 
-## Phase 3 — Triage with VEX beyond `not_affected`
+## Phase 3 — Triage with VEX annotations
 
-In Inspection you set `(CVE-2019-10906, Jinja2 2.10)` to `not_affected / vulnerable_code_not_in_execute_path` because the Python app never renders user-supplied templates. That suppressed the finding cleanly. The other 6.0 VEX statuses cover the cases where the vulnerability *is* relevant but you want to communicate the state to downstream consumers — and to policy evaluation — without pretending it's gone.
+Not every vulnerability in the list is exploitable in your context. A library may be present but never invoked; a vulnerable code path may be reachable only with a configuration you don't ship; a fix may be backported by your distro vendor under a different name; an upstream supplier may own the dependency and need time to deliver a fixed SBOM. **VEX annotations** capture those judgements in a machine-readable form, scoped to a specific `(vulnerability, package, version)` triple under an app version.
+
+The four 6.0 VEX statuses come from the CycloneDX / OpenVEX vocabulary:
+
+| `--status` | Meaning |
+|---|---|
+| `not_affected` | The vulnerability does not affect this product/version. Requires a `--justification`. |
+| `affected` | The vulnerability affects this product/version. Action expected. |
+| `fixed` | A fix has been applied to this product/version. |
+| `under_investigation` | Triage in progress; status will be revised. |
+
+For `not_affected`, the justification names *why* the vulnerability doesn't apply:
+
+| `--justification` (used with `not_affected`) | Meaning |
+|---|---|
+| `component_not_present` | The vulnerable component isn't actually present despite what the SBOM says. |
+| `vulnerable_code_not_present` | The component is present but the vulnerable code isn't (e.g. compiled-out feature). |
+| `vulnerable_code_not_in_execute_path` | The vulnerable code is present but never reached at runtime. |
+| `vulnerable_code_cannot_be_controlled_by_adversary` | An adversary has no input path to reach the vulnerable code. |
+| `inline_mitigations_already_exist` | A control already prevents exploitation (WAF rule, sandbox, syscall filter, …). |
+
+We'll walk through three of these — `not_affected`, `affected`, and `under_investigation` — against findings on `v1.0.0`.
+
+> [!IMPORTANT]
+> Policy evaluation in 6.0 alpha doesn't apply VEX annotations to findings; a `not_affected` annotation does **not** suppress the matching finding in `app version policy findings list`. VEX in 6.0 alpha is a **record-keeping and disclosure mechanism** — the dispositions you record here flow into the CycloneDX VEX and VDR exports covered in the Reporting module so downstream consumers (customers, regulators, internal triage tools) see your decisions.
+
+### `not_affected` — vulnerability is present but doesn't apply
+
+`CVE-2019-10906` (Jinja2 sandbox escape) is a real CVE that affects `Jinja2==2.10` in the Python asset. The demo Python application doesn't render any user-supplied templates — it just returns JSON via Flask — so the vulnerable code path is never executed. That's a textbook `not_affected / vulnerable_code_not_in_execute_path` case.
+
+```bash
+anchorectl app version vex add v1.0.0 \
+  --app app \
+  --vuln-id CVE-2019-10906 \
+  --pkg-name Jinja2 \
+  --pkg-type python \
+  --pkg-version 2.10 \
+  --status not_affected \
+  --justification vulnerable_code_not_in_execute_path \
+  --impact-statement "The Flask routes in app.py never render user-supplied Jinja templates; the sandbox escape requires render_template_string() with attacker-controlled input, which is not present." \
+  --action-statement "No action required for this release. Tracked for upgrade in v1.1.0." \
+  --additional-details "Reviewed by security-team on 2026-05-07"
+```
+
+Output:
+
+```
+ ✔ Added vex
+ID: <job-uuid>
+Vuln ID: CVE-2019-10906
+Status: not_affected
+Package: Jinja2
+```
 
 ### `affected` — yes, we know; here's what we're going to do
 
-The Python application's `requests==2.19.1` pin trips `CVE-2018-18074`. We'll fix this in Phase 6 by bumping the dependency, but for now let the policy and any downstream VEX consumer know we've triaged it.
+The Python application's `requests==2.19.1` pin trips `CVE-2018-18074`. We'll fix this in Phase 6 by bumping the dependency, but for now record the decision so consumers of the release know the issue is acknowledged and on a path to resolution.
 
 ```bash
 anchorectl app version vex add v1.0.0 \
@@ -146,14 +198,12 @@ anchorectl app version vex add v1.0.0 \
   --additional-details "Triaged 2026-05-07 by security-team"
 ```
 
-`affected` does **not** suppress the finding — the policy will still warn (and we'd want it to, until we ship the fix). What it does is record the decision and put it in the CycloneDX VEX export so consumers of the release know the issue is acknowledged and on a path to resolution.
-
 > [!NOTE]
 > `--justification` is required for `not_affected` but **not** for `affected` — for `affected` you supply `--action-statement` instead, describing what you'll do (or have already done) about it.
 
 ### `under_investigation` — give us time to triage
 
-The Java SBOM ingested in Visibility came from an upstream supplier. The log4j-core 2.14.1 entry trips `CVE-2021-44228` and `stop-on-kev` — but we don't own the Java application; the upstream supplier does. Record that we're working with them while we wait for a fixed SBOM:
+The Java SBOM ingested in Visibility came from an upstream supplier. The log4j-core 2.14.1 entry trips `CVE-2021-44228` and fires Stop-on-KEV (and Stop-on-High-or-above too — log4j 2.14.1 is Critical) — but we don't own the Java application; the upstream supplier does. Record that we're working with them while we wait for a fixed SBOM:
 
 ```bash
 anchorectl app version vex add v1.0.0 \
@@ -167,7 +217,7 @@ anchorectl app version vex add v1.0.0 \
   --additional-details "Reviewed 2026-05-07; supplier acknowledged"
 ```
 
-`under_investigation` is the honest answer when you've seen the finding but the decision isn't made yet. Like `affected`, it does not suppress.
+`under_investigation` is the honest answer when you've seen the finding but the decision isn't made yet.
 
 ### Confirm the state
 
@@ -175,7 +225,33 @@ anchorectl app version vex add v1.0.0 \
 anchorectl app version vex list v1.0.0 --app app
 ```
 
-You'll see all three annotations — the `not_affected` from Inspection, plus the two you just added. They'll all also surface in the version's CycloneDX VEX export from Inspection Phase 6.
+You'll see all three annotations you just recorded against `v1.0.0`. They'll all surface in the version's CycloneDX VEX and VDR exports in the Reporting module.
+
+Re-run the version-level vuln list and pick out the `not_affected` entry to confirm the underlying match is still surfaced — VEX tags the finding, it doesn't remove it from inspection output:
+
+```bash
+anchorectl app version vuln list v1.0.0 --app app -o json \
+  | jq '.[] | select(.vulnerabilityId == "CVE-2019-10906") | {vulnerabilityId, packageName, packageVersion, severity}'
+```
+
+Update an annotation as the situation evolves (status, justification, statements, additional details all editable):
+
+```bash
+anchorectl app version vex update <vuln-annotation-id> \
+  --app app --version v1.0.0 \
+  --status affected \
+  --action-statement "Upgrade scheduled for v1.0.1; mitigation in place via input validation."
+```
+
+Or remove it entirely:
+
+```bash
+anchorectl app version vex delete <vuln-annotation-id> \
+  --app app --version v1.0.0
+```
+
+> [!NOTE]
+> VEX annotations are scoped to an **app version**. Recording `not_affected` for `(CVE-2019-10906, Jinja2, 2.10)` under `v1.0.0` does **not** silently apply to `v1.0.1` — each release is its own assessment. Use VEX when the judgement is evidence-backed and specific to a release; use bundle-level allowlists (Phase 4) when the judgement belongs to the policy itself.
 
 > [!TIP]
 > If you change your mind — for example, the upstream supplier delivers a fixed SBOM — update the annotation rather than deleting and re-adding. `anchorectl app version vex update <id> --status fixed --action-statement "Resolved in v1.0.1 by ingesting supplier SBOM rev 2026-05-15."` keeps the audit trail intact.
@@ -210,7 +286,7 @@ Open `./assets/policies/lab-policy.json` and replace the empty `allowlists` and 
   {
     "id": "default-mapping",
     "name": "Default mapping",
-    "rule_set_ids": ["vuln-rules"],
+    "rule_set_ids": ["d3a1d27b-28f4-4f9d-afe9-8fe1ab89f5ed"],
     "allowlist_ids": ["platform-managed-waivers"]
   }
 ]
@@ -249,7 +325,7 @@ anchorectl app version policy findings list v1.0.0 --app app -o json \
   | jq '.[] | select(.vulnerability_id == "CVE-2021-44228")'
 ```
 
-The remaining `CVE-2021-44228` finding now has `"allowlisted": true` and an `allowlist` object naming the waiver, its expiry, and the matching item. The version-level status moves from `fail` to `pass with warnings` — `CVE-2020-14343` (PyYAML) is still a `stop`, but the log4j entry no longer counts against the build.
+The remaining `CVE-2021-44228` findings (both the Stop-on-KEV one and the Stop-on-High-or-above one) now have `"allowlisted": true` and an `allowlist` object naming the waiver, its expiry, and the matching item. The version-level status is still `fail` — `CVE-2020-14343` (PyYAML) and the Highs in the Python application are still `stop` — but the log4j entry no longer counts against the build. Phase 5 will trim more of those Highs.
 
 > [!TIP]
 > Allowlists vs VEX, when in doubt:
@@ -258,21 +334,20 @@ The remaining `CVE-2021-44228` finding now has `"allowlisted": true` and an `all
 
 ## Phase 5 — Time-bound rules
 
-The current `warn-high-with-fix` rule fires the moment a fix is available. That's accurate but ungenerous — engineers need *some* runway between "an advisory dropped" and "your build starts complaining." Time-bound parameters let the rule grant that runway automatically.
+The Stop-on-High-or-above rule fires the moment a High or Critical match is detected — including findings from CVEs published yesterday, before anyone has had a chance to react. That's accurate but ungenerous: engineers need *some* runway between "an advisory dropped" and "your build starts failing." Time-bound parameters let the rule grant that runway automatically.
 
-Edit `./assets/policies/lab-policy.json` again and update the `warn-high-with-fix` rule. Replace its `params` block with this one (the rest of the rule stays as-is):
+Edit `./assets/policies/lab-policy.json` again and update the Stop-on-High-or-above rule (the one with id `d7b4a6af-107f-4b6d-be00-bb06e26b2350`). Replace its `params` block with this one (the rest of the rule stays as-is):
 
 ```json
 "params": [
   {"name": "package_type", "value": "all"},
-  {"name": "severity_comparison", "value": "="},
   {"name": "severity", "value": "high"},
-  {"name": "fix_available", "value": "true"},
-  {"name": "max_days_since_fix", "value": "14"}
+  {"name": "severity_comparison", "value": ">="},
+  {"name": "max_days_since_creation", "value": "14"}
 ]
 ```
 
-The new parameter means *"only fire this rule when the fix has been available for more than 14 days."* A High that became fixable yesterday won't trigger; a High that became fixable two months ago will.
+The new parameter means *"only fire this rule when the CVE has been published for more than 14 days."* A High or Critical disclosed yesterday won't trigger; one disclosed two months ago will.
 
 > [!NOTE]
 > The `vulnerabilities / package` trigger supports two clock parameters:
@@ -282,7 +357,7 @@ The new parameter means *"only fire this rule when the fix has been available fo
 > | `max_days_since_fix` | The fix has been available for **more than** N days. Best for "you've had time to upgrade." |
 > | `max_days_since_creation` | The CVE has existed for **more than** N days. Best for "this isn't a zero-day anymore." |
 >
-> Use `max_days_since_fix` for actionable Highs and `max_days_since_creation` when you also want to surface long-known issues that don't have fixes yet.
+> Use `max_days_since_creation` to put a hard clock on every match regardless of fix state; use `max_days_since_fix` when the clock should start the moment an upgrade is available.
 
 Re-import and re-evaluate:
 
@@ -297,26 +372,26 @@ curl -sS -X POST \
   -d "{\"app_version_id\": \"${VERSION_ID}\"}"
 ```
 
-Inspect the warn-action findings:
+Inspect the stop-action findings under the Stop-on-High-or-above rule:
 
 ```bash
 anchorectl app version policy findings list v1.0.0 --app app -o json \
-  | jq '[.[] | select(.action == "warn" and .rule_id == "warn-high-with-fix")]'
+  | jq '[.[] | select(.action == "stop" and .rule_id == "d7b4a6af-107f-4b6d-be00-bb06e26b2350")]'
 ```
 
-The Python application's `CVE-2018-18074` (`requests`) and the other Highs we surfaced earlier all have fix advisory dates well past 14 days, so they continue to warn — these are genuinely overdue. A hypothetical High whose fix landed within the last fortnight wouldn't appear at all.
+Every CVE in the lab's test fixtures (CVE-2018-18074, CVE-2019-10906, CVE-2020-14343, CVE-2021-44228) was published years ago, so they all sit well past the 14-day creation window and continue to stop the build — these are genuinely overdue. A hypothetical High disclosed within the last fortnight would *not* appear at all; the rule would treat it as still in its runway.
 
 > [!TIP]
-> A common shape in real policies is two complementary rules on the same trigger:
+> A common shape in real policies is two complementary rules on the same trigger — one `WARN` for immediate awareness, one `STOP` once the clock runs out:
 >
-> - `warn-high-with-fix` with `max_days_since_fix=14` — warning during the runway.
-> - `stop-high-with-fix` with `max_days_since_fix=30` — blocking once the runway is up.
+> - `warn-high-or-above` with no window — surface immediately for awareness.
+> - `stop-high-or-above` with `max_days_since_creation=14` — block after fourteen days.
 >
-> The two together encode "you have two weeks of warning and four weeks of grace" cleanly into the bundle.
+> The two together encode "you have two weeks of warning before the build starts failing" cleanly into the bundle. The lab uses a single STOP rule for simplicity; you'd add the WARN partner in a real policy.
 
 ## Phase 6 — Ship the fix as `v1.0.1`
 
-You've now used every remediation surface that doesn't change the artifact. The remaining `stop` findings on `v1.0.0` (`CVE-2020-14343` in PyYAML, the rest of the Highs that crossed the new 14-day clock) are genuine "fix it" cases — we need a new version with upgraded dependencies. This is the outer loop.
+You've now used every remediation surface that doesn't change the artifact. The remaining `stop` findings on `v1.0.0` (`CVE-2020-14343` in PyYAML, plus the Highs in the Python application that are past the 14-day creation window) are genuine "fix it" cases — we need a new version with upgraded dependencies. This is the outer loop.
 
 ### Upgrade the Python application's dependencies
 
@@ -407,7 +482,7 @@ echo "v1.0.0:" && anchorectl app version vuln list v1.0.0 --app app -o json | jq
 echo "v1.0.1:" && anchorectl app version vuln list v1.0.1 --app app -o json | jq 'length'
 ```
 
-For the package-level diff, export the package inventories from both versions (Inspection Phase 6) and `diff` the CSVs:
+For the package-level diff, export the package inventories from both versions (the Reporting module walks through the per-version export surface in detail) and `diff` the CSVs:
 
 ```bash
 anchorectl app version export packages v1.0.0 --app app --file /tmp/v1.0.0-packages.csv
@@ -426,9 +501,9 @@ You closed the three loops of remediation for `app@v1.0.0` and shipped a clean `
 
 1. Activated **`vuln_update` and `policy_eval` subscriptions** on the Postgres tag and surveyed how events flow to notification endpoints.
 2. Walked the **Action Workbench** in the Web UI — recommendations, notes, and the push to GitHub / Jira / webhook.
-3. Recorded **VEX annotations** beyond `not_affected` — `affected` for the `requests` upgrade and `under_investigation` for the supplier-managed log4j entry.
+3. Recorded **VEX annotations** against `v1.0.0` — `not_affected` for the Jinja2 sandbox escape, `affected` for the `requests` upgrade, and `under_investigation` for the supplier-managed log4j entry.
 4. Added a **bundle-level allowlist** with an expiry for `CVE-2021-44228+*`, and wired the necessary `sbom_mappings` entry to activate it.
-5. Gave Highs a **14-day grace period** with `max_days_since_fix`, so a freshly-fixed High doesn't immediately stop the build.
+5. Gave the Stop-on-High-or-above rule a **14-day runway** with `max_days_since_creation`, so a freshly-disclosed CVE doesn't immediately stop the build.
 6. Created `v1.0.1`, re-scanned the **upgraded Python application** as an asset, re-evaluated the policy, and diffed the package inventory against `v1.0.0`.
 
 Useful 5.x → 6.0 mappings:

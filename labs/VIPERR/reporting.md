@@ -32,18 +32,75 @@ There is no `anchorectl report` command at this alpha. The CLI's reporting surfa
 
 ## Phase 2 — Per-version exports across a release line
 
-You've already touched most of the per-version export surface in earlier modules. Here's the full set:
+Six per-version exports cover most release-level hand-offs:
 
-| Command | Format | Introduced in |
+| Command | Format | Best for |
 |---|---|---|
-| `app version export sbom VERSION` | CycloneDX JSON (merged across assets) | Inspection Phase 6 |
-| `app version export vulnerabilities VERSION` | CSV | Inspection Phase 6 |
-| `app version export packages VERSION` | CSV | Inspection Phase 6 |
-| `app version export vex VERSION` | CycloneDX VEX JSON | Inspection Phase 6 |
-| `app version export policy-compliance VERSION` | CSV | Policy Enforcement Phase 6 |
-| `app version export vdr VERSION` | CycloneDX VDR JSON | here |
+| `app version export sbom VERSION` | CycloneDX JSON (merged across assets) | Release-level SBOM hand-off to customers or downstream tools |
+| `app version export vulnerabilities VERSION` | CSV | Security-team and GRC hand-offs |
+| `app version export packages VERSION` | CSV | Inventory snapshots and diffs across versions |
+| `app version export vex VERSION` | CycloneDX VEX JSON | Internal triage tools and VEX-aware downstream scanners |
+| `app version export policy-compliance VERSION` | CSV | Audit tickets, ship/no-ship reviews |
+| `app version export vdr VERSION` | CycloneDX VDR JSON | Customer / regulator disclosure documents |
 
 Every command shares the same shape: pass the version name, the `--app`, and either `--file <path>` (write to disk) or no flag (stream to stdout). Each export is created as a job, the CLI polls until it's complete, and the resulting download is written out.
+
+### SBOM (CycloneDX JSON)
+
+Every asset under the version, merged into one CycloneDX SBOM document. Use this when a customer, an auditor, or a downstream tool wants "the SBOM for this release" rather than the per-asset SBOMs:
+
+```bash
+anchorectl app version export sbom v1.0.0 \
+  --app app \
+  --file ./app-v1.0.0-sbom.cdx.json
+```
+
+> [!NOTE]
+> This is different from `app version asset sbom get`, which returns the original SBOM Anchore Enterprise stored for a single asset, in whatever format you ingested it. `app version export sbom` aggregates the package inventory of every asset under the version and emits a single CycloneDX JSON document — convenient for a release-level hand-off.
+
+### Vulnerability report (CSV)
+
+The canonical "send this to your security team / GRC tool" artifact:
+
+```bash
+anchorectl app version export vulnerabilities v1.0.0 \
+  --app app \
+  --file ./app-v1.0.0-vulnerabilities.csv
+```
+
+### Package inventory (CSV)
+
+Every package across every asset, deduplicated, with location and source attribution:
+
+```bash
+anchorectl app version export packages v1.0.0 \
+  --app app \
+  --file ./app-v1.0.0-packages.csv
+```
+
+### VEX document (CycloneDX VEX)
+
+Every VEX annotation you recorded in Remediation Phase 3 (`not_affected`, `affected`, `under_investigation`), packaged as a CycloneDX VEX document you can hand to a customer, attach to a release, or feed into a downstream scanner:
+
+```bash
+anchorectl app version export vex v1.0.0 \
+  --app app \
+  --file ./app-v1.0.0-vex.cdx.json
+```
+
+The CycloneDX VEX uses the same status / justification vocabulary as `app version vex add`, so a downstream tool that understands CycloneDX VEX will pick up your decisions automatically.
+
+### Compliance report (CSV)
+
+The canonical artifact for an audit, a ticket attachment, or a ship/no-ship review — every finding from the most recent policy evaluation in CSV form:
+
+```bash
+anchorectl app version export policy-compliance v1.0.0 \
+  --app app \
+  --file ./app-v1.0.0-policy-compliance.csv
+```
+
+The CSV has one row per finding with rule, action, vulnerability, package, asset, and fix info — the same data `app version policy findings list` returns, in a format every tool downstream knows how to read.
 
 ### VDR — the disclosure report
 
@@ -304,7 +361,7 @@ Useful 5.x → 6.0 mappings:
 | Web UI `/reports` with templates and saved reports             | Unchanged — same surface, same templates, same scheduling            |
 | `POST /v1/reports/graphql`                                     | `POST /v2/reports/graphql` (and `/v2/reports/global/graphql`)        |
 | `anchorectl image vulnerabilities <image>`                     | `app version vuln list <version> --app <app>` for per-version (Inspection Phase 2); GraphQL for account-wide |
-| Compliance CSV via UI download                                 | `app version export policy-compliance <version> --app <app>` (Policy Enforcement Phase 6) |
+| Compliance CSV via UI download                                 | `app version export policy-compliance <version> --app <app>` (introduced in Phase 2)      |
 | SBOM hand-off via per-image download                           | `app version export sbom <version> --app <app>` produces a merged release-level SBOM |
 | Disclosure docs hand-assembled from VEX + vuln list            | `app version export vdr <version> --app <app>` produces a CycloneDX VDR in one shot |
 | Kubernetes runtime reports under `/reports`                    | Unchanged — still the v5 reports service, still keyed on image records |

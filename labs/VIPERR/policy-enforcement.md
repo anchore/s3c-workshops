@@ -5,21 +5,20 @@ The Inspection module gave you a way to *see* the vulnerabilities and packages a
 In Anchore Enterprise 6.0 a **policy** is a JSON bundle of rules. Each rule names a **gate** (the kind of check), a **trigger** (the specific condition), an **action** (`stop`, `warn`, `go`), and **parameters** (the threshold). The bundle is bound to your application; evaluation runs against the version's deduplicated assets and produces a per-rule list of findings.
 
 > [!IMPORTANT]
-> This module assumes you completed the [Visibility module](visibility.md) and the [Inspection module](inspection.md). It uses the same `app`, `v1.0.0` version, the four assets attached to it, and the VEX annotation you recorded against `CVE-2019-10906` in `Jinja2 2.10`.
+> This module assumes you completed the [Visibility module](visibility.md) and the [Inspection module](inspection.md). It uses the same `app`, `v1.0.0` version, and the four assets attached to it.
 
 > [!NOTE]
 > **Alpha-state caveat:** in 6.0 alpha the only ported gate is `vulnerabilities` (with three triggers — `package`, `denylist`, `stale_feed_data`) plus a small `always` gate used internally. v5.x had many more gates (Dockerfile, files, secrets, malware, packages, …); those are expected back as 6.0 progresses. Everything in this module is built around the gate that's available today and applies cleanly to the broader gate set when it lands.
 
 ## How this lab module is structured
 
-Six phases, fully sequential:
+Five phases, fully sequential:
 
 1. **Understand the policy model** — bundles, rule sets, gates, triggers, allowlists, app-level binding.
 2. **Survey the policies on the system** — list and read what's already loaded.
 3. **Author and import a custom policy** — bring your organisation's rules in via JSON.
 4. **Bind the policy to your application** — make it the active policy for `app`.
 5. **Evaluate `v1.0.0` and read the findings** — see what passes, what stops, what warns.
-6. **Suppress with VEX, then export the compliance report** — round-trip from the Inspection module's VEX into a policy outcome.
 
 ## Phase 1 — Understand the policy model
 
@@ -27,12 +26,12 @@ A policy bundle is a JSON document with three parts that matter for this module:
 
 | Part | What it does |
 |---|---|
-| `rule_sets` | One or more named groups of rules. Each rule names a `gate`, a `trigger`, an `action` (`stop`, `warn`, `go`), and a list of `params`. Rule sets are evaluated against assets attached to a version. |
+| `rule_sets` | One or more named groups of rules. Each rule set names an `artifact_type` (today, always `sbom`) and contains rules; each rule names a `gate`, a `trigger`, an `action` (`STOP`, `WARN`, `GO`), and a list of `params`. Rule sets are evaluated against the version's assets that match the named `artifact_type`. |
 | `allowlists` | Items that suppress specific findings *inside the policy itself* — usually by `(gate, trigger_id)` with an optional expiry. Useful for blanket exceptions that should travel with the policy bundle. |
 | `sbom_mappings` | Which rule sets and allowlists apply to which artifacts. In simple deployments you'll have one mapping covering everything; large deployments use mappings to apply different rule sets to different SBOM names/versions. |
 
 > [!NOTE]
-> Policy bundles in 6.0 alpha are stored and managed by the v5 catalog (under `anchorectl policy …`). Anchore Enterprise's component_catalog service reads a bundle from there, parses it into the v6 model, and runs evaluation against the asset model. v5 field names (`whitelists`, `policies`) are auto-aliased to v6 names (`allowlists`, `rule_sets`), so existing bundles import unchanged.
+> Policy bundles in 6.0 alpha are stored and managed by the v5 catalog (under `anchorectl policy …`). Anchore Enterprise's component_catalog service reads a bundle from there, parses it into the v6 model, and runs evaluation against the asset model. v5 field names (`whitelists`, `policies`) are auto-aliased to v6 names (`allowlists`, `rule_sets`), so existing bundles import unchanged. The one v6-only field you must set on each rule set is `artifact_type: "sbom"` — the executable policy skips any rule set whose `artifact_type` isn't `sbom`, so a bundle without it imports cleanly but evaluates to zero findings.
 
 **Binding.** A policy applies to an application either through:
 
@@ -68,32 +67,34 @@ Any of these can serve as a starting point — the security-only and CIS bundles
 
 ## Phase 3 — Author and import a custom policy
 
-For the rest of the module we'll use a small custom policy bundled at `./assets/policies/lab-policy.json`. Open it and you'll see three rules in one rule set, all on the `vulnerabilities` gate:
+For the rest of the module we'll use a small custom policy bundled at `./assets/policies/lab-policy.json`. Open it and you'll see two rules in one `sbom`-typed rule set, both on the `vulnerabilities` gate:
 
-| Rule ID | Gate / trigger | Action | What it fires on |
+| Rule (by behaviour) | Gate / trigger | Action | What it fires on |
 |---|---|---|---|
-| `stop-on-critical` | `vulnerabilities / package` | `stop` | Any package with a Critical-severity match. |
-| `warn-high-with-fix` | `vulnerabilities / package` | `warn` | High-severity matches that already have a fix available — easy wins, surfaced but not blocking. |
-| `stop-on-kev` | `vulnerabilities / package` | `stop` | Any vulnerability in the CISA Known Exploited Vulnerabilities catalog, regardless of severity. |
+| Stop-on-KEV | `vulnerabilities / package` | `STOP` | Any package match for a vulnerability in the CISA Known Exploited Vulnerabilities catalog, regardless of severity. |
+| Stop-on-High-or-above | `vulnerabilities / package` | `STOP` | Any package with a High or Critical severity match. |
 
-Each rule is a small object:
+> [!NOTE]
+> The bundle's `rule_set` and `rule` IDs are UUIDs assigned by the catalog rather than human-friendly slugs. The UUIDs are stable across re-imports of the same bundle; we'll refer to rules by their behaviour throughout this module and only quote IDs where the API output forces us to.
+
+Each rule is a small object — here's the Stop-on-High-or-above rule from the bundle:
 
 ```json
 {
-  "id": "stop-on-critical",
+  "id": "d7b4a6af-107f-4b6d-be00-bb06e26b2350",
   "gate": "vulnerabilities",
   "trigger": "package",
   "action": "STOP",
-  "description": "Stop the build if any package has a Critical-severity vulnerability.",
+  "description": "",
   "params": [
     {"name": "package_type", "value": "all"},
-    {"name": "severity_comparison", "value": ">="},
-    {"name": "severity", "value": "critical"}
+    {"name": "severity", "value": "high"},
+    {"name": "severity_comparison", "value": ">="}
   ]
 }
 ```
 
-The `vulnerabilities / package` trigger has a rich set of parameters available — `severity_comparison` (`=`, `!=`, `<`, `>`, `<=`, `>=`), CVSS v3 base/exploitability/impact comparisons and thresholds, EPSS score and percentile comparisons, `fix_available`, `vendor_only`, `max_days_since_creation`, `max_days_since_fix`, and `known_exploited_vulnerability` (the KEV flag). The bundle in `lab-policy.json` only uses three; build your real policies up from these primitives.
+The `vulnerabilities / package` trigger has a rich set of parameters available — `severity_comparison` (`=`, `!=`, `<`, `>`, `<=`, `>=`), CVSS v3 base/exploitability/impact comparisons and thresholds, EPSS score and percentile comparisons, `fix_available`, `vendor_only`, `max_days_since_creation`, `max_days_since_fix`, and `known_exploited_vulnerability` (the KEV flag). The bundle in `lab-policy.json` only uses three (`package_type`, `severity` + `severity_comparison`, `known_exploited_vulnerability`); build your real policies up from these primitives.
 
 Import the bundle:
 
@@ -201,22 +202,24 @@ Output (truncated):
 
 ```
  ✔ List findings
-┌──────────────────┬──────┬────────────────┬───────────┬─────────────┬──────────────────────────────────────────────┐
-│ RULE             │ ACTION│ VULNERABILITY  │ PACKAGE   │ ASSET       │ DETAIL                                       │
-├──────────────────┼──────┼────────────────┼───────────┼─────────────┼──────────────────────────────────────────────┤
-│ stop-on-critical │ stop │ CVE-2021-44228 │ log4j-core│ my-java-app │ Critical, fix 2.15.0 available, KEV          │
-│ stop-on-critical │ stop │ CVE-2020-14343 │ PyYAML    │ my-python-…│ Critical, fix 5.4 available                  │
-│ stop-on-kev      │ stop │ CVE-2021-44228 │ log4j-core│ my-java-app │ Listed in CISA KEV catalog                   │
-│ warn-high-with-… │ warn │ CVE-2018-18074 │ requests  │ my-python-…│ High, fix 2.20.0 available                   │
-│ warn-high-with-… │ warn │ CVE-2019-10906 │ Jinja2    │ my-python-…│ High, fix 2.10.1 available                   │
-│ ...              │ ...  │ ...            │ ...       │ ...         │ ...                                          │
-└──────────────────┴──────┴────────────────┴───────────┴─────────────┴──────────────────────────────────────────────┘
+┌──────────────┬──────┬────────────────┬───────────┬─────────────┬──────────────────────────────────────────────┐
+│ RULE         │ ACTION│ VULNERABILITY  │ PACKAGE   │ ASSET       │ DETAIL                                       │
+├──────────────┼──────┼────────────────┼───────────┼─────────────┼──────────────────────────────────────────────┤
+│ 17ed63bd-…   │ stop │ CVE-2021-44228 │ log4j-core│ my-java-app │ Listed in CISA KEV catalog                   │
+│ d7b4a6af-…   │ stop │ CVE-2021-44228 │ log4j-core│ my-java-app │ Critical, fix 2.15.0 available               │
+│ d7b4a6af-…   │ stop │ CVE-2020-14343 │ PyYAML    │ my-python-…│ Critical, fix 5.4 available                  │
+│ d7b4a6af-…   │ stop │ CVE-2018-18074 │ requests  │ my-python-…│ High, fix 2.20.0 available                   │
+│ d7b4a6af-…   │ stop │ CVE-2019-10906 │ Jinja2    │ my-python-…│ High, fix 2.10.1 available                   │
+│ ...          │ ...  │ ...            │ ...       │ ...         │ ...                                          │
+└──────────────┴──────┴────────────────┴───────────┴─────────────┴──────────────────────────────────────────────┘
 ```
+
+`17ed63bd-…` is Stop-on-KEV; `d7b4a6af-…` is Stop-on-High-or-above. Both fire on `CVE-2021-44228` (log4j) — KEV catches it once for the KEV flag, severity catches it again as a Critical. Every other High/Critical match shows up under the severity rule.
 
 > [!NOTE]
 > Findings serialize `action` as a lowercased string (`"stop"` / `"warn"` / `"go"`) even though the policy bundle JSON requires the uppercased enum (`STOP` / `WARN` / `GO`). The v5 catalog stores the bundle in one case; the v6 component_catalog returns findings in the other. Filter on the lowercase form when querying findings output.
 
-Each finding cites the rule that fired, the action, the vulnerability, the package, and which asset contributed the package. JSON output gives you the full detail blob — explore it for fields like the rule ID, the matched vulnerability, the package coordinates, and any allowlist or VEX state attached to the finding:
+Each finding cites the rule that fired, the action, the vulnerability, the package, and which asset contributed the package. JSON output gives you the full detail blob — explore it for fields like the rule ID, the matched vulnerability, the package coordinates, and any allowlist state attached to the finding:
 
 ```bash
 anchorectl app version policy findings list v1.0.0 --app app -o json \
@@ -224,50 +227,10 @@ anchorectl app version policy findings list v1.0.0 --app app -o json \
 ```
 
 > [!TIP]
-> `findings list` is paginated under the hood — for a large deployment, prefer `-o json` and process programmatically. The CSV export in Phase 6 is the right shape for hand-off to a security team or GRC tool.
+> `findings list` is paginated under the hood — for a large deployment, prefer `-o json` and process programmatically.
 
 > [!IMPORTANT]
-> The auto-enqueue fires only when the **policy digest has changed** (e.g. you re-imported the bundle with `policy update --input ...`) or when no evaluation exists for the version yet. Other changes that affect the result — adding a VEX annotation, attaching new assets — don't bump the digest, so subsequent `status get` calls return the cached evaluation until something refreshes the digest or you trigger a fresh evaluation explicitly. Phase 6 hits this case.
-
-## Phase 6 — Suppress with VEX, then export the compliance report
-
-In the Inspection module you marked `CVE-2019-10906` in `Jinja2 2.10` as `not_affected / vulnerable_code_not_in_execute_path` — recording that the vulnerable code path isn't reachable in the demo Python app. Policy evaluation is VEX-aware: a `not_affected` annotation suppresses the matching finding so a triaged-and-justified vulnerability doesn't keep failing your pipeline.
-
-Adding a VEX annotation doesn't bump the policy digest, so `status get` and `findings list` won't auto-enqueue a fresh evaluation on their own — they'll keep returning the cached result. Trigger the re-evaluation explicitly via the API:
-
-```bash
-APP_ID=$(anchorectl app get app -o id)
-VERSION_ID=$(anchorectl app version get v1.0.0 --app app -o id)
-
-curl -sS -X POST \
-  -H "Content-Type: application/json" \
-  -u "${ANCHORECTL_USERNAME}:${ANCHORECTL_PASSWORD}" \
-  -H "x-anchore-account: admin" \
-  "${ANCHORECTL_URL}/v2/apps/${APP_ID}/jobs/evaluate-policy" \
-  -d "{\"app_version_id\": \"${VERSION_ID}\"}"
-```
-
-Wait for the new `evaluate-policy` job to complete (`anchorectl app job list app --status processing,complete`), then re-list the findings:
-
-```bash
-anchorectl app version policy findings list v1.0.0 --app app -o json \
-  | jq '.[] | select(.vulnerabilityId == "CVE-2019-10906")'
-```
-
-The result is empty — the rule didn't fire on that match because the VEX annotation marked it as `not_affected`. Other High-with-fix findings still surface (we didn't VEX them); only the one you explicitly triaged was suppressed.
-
-> [!NOTE]
-> Allowlists in the policy bundle (`allowlists` field) and VEX annotations on the version both suppress findings, but they're for different purposes. **Use allowlists** for blanket, policy-wide exceptions that travel with the bundle ("we never fail on this one CVE in this one trigger"). **Use VEX annotations** for per-version, evidence-backed `not_affected` decisions with justifications. The Remediation module covers when to reach for each.
-
-Finally, export the compliance report — the canonical artifact for an audit, a ticket attachment, or a ship/no-ship review:
-
-```bash
-anchorectl app version export policy-compliance v1.0.0 \
-  --app app \
-  --file ./app-v1.0.0-policy-compliance.csv
-```
-
-The CSV has one row per finding, with rule, action, vulnerability, package, asset, fix info, and any VEX status — the same data the `findings list` command returns, in a format every tool downstream knows how to read.
+> The auto-enqueue fires only when the **policy digest has changed** (e.g. you re-imported the bundle with `policy update --input ...`) or when no evaluation exists for the version yet. Changes to the version itself (attaching new assets, for instance) don't bump the digest, so subsequent `status get` calls return the cached evaluation until either the digest moves or you trigger a fresh evaluation explicitly via `POST /v2/apps/<id>/jobs/evaluate-policy`. The Remediation module shows that explicit-trigger pattern.
 
 ## Recap
 
@@ -275,10 +238,9 @@ You walked the full policy enforcement loop for `app@v1.0.0`:
 
 1. Saw what a 6.0 **policy bundle** is — rule sets, gates, triggers, allowlists, mappings — and how it binds to applications.
 2. Surveyed the **policies already on the system** with `policy list / get`.
-3. Authored and imported your own bundle (`viperr-lab-policy`) with three rules on the vulnerabilities gate.
+3. Authored and imported your own bundle (`viperr-lab-policy`) with two rules on the vulnerabilities gate.
 4. **Bound** it to `app` via `app update --policy-id`.
 5. Triggered an **evaluation**, read the version-level **status**, and inspected the per-rule **findings**.
-6. Saw a **VEX annotation suppress** a finding without changing the policy itself, and exported the **compliance report** as CSV.
 
 Useful 5.x → 6.0 mappings:
 
@@ -289,9 +251,9 @@ Useful 5.x → 6.0 mappings:
 | `image check -p <policy-id>`               | `app update <app> --policy-id <id>` then evaluate                    |
 | Policy bundle JSON (`whitelists`, `policies`) | Same JSON; v5 names auto-aliased to `allowlists` / `rule_sets`     |
 | `policy add/get/list/update/activate`      | Unchanged — still managed via the v5 catalog                          |
-| Allowlists (in-bundle) for waivers         | Allowlists *or* VEX annotations (`app version vex …`) per-version    |
+| Allowlists (in-bundle) for waivers         | Allowlists (in-bundle) — same shape, same purpose                    |
 
-**CI/CD pattern.** A pipeline gate is the same shape as the manual flow: ingest your assets (Visibility), call `app version policy status get` — which auto-enqueues an evaluation when one is needed — poll `anchorectl app job list app --status processing,complete` until the latest `evaluate-policy` job is done, then re-read `app version policy status get` for the final outcome. Treat `Status: fail` as exit-1 to break the build. When you need an explicit re-trigger (e.g. after a VEX change that doesn't bump the policy digest), `POST /v2/apps/<id>/jobs/evaluate-policy` is the manual escape hatch shown in Phase 6. The VIPERR Remediation module covers feeding the resulting findings back to developers via webhook, Slack, or issue tracker.
+**CI/CD pattern.** A pipeline gate is the same shape as the manual flow: ingest your assets (Visibility), call `app version policy status get` — which auto-enqueues an evaluation when one is needed — poll `anchorectl app job list app --status processing,complete` until the latest `evaluate-policy` job is done, then re-read `app version policy status get` for the final outcome. Treat `Status: fail` as exit-1 to break the build. When you need an explicit re-trigger (e.g. after attaching new assets to an existing version), `POST /v2/apps/<id>/jobs/evaluate-policy` is the manual escape hatch — the Remediation module walks through it. The VIPERR Remediation module also covers feeding the resulting findings back to developers via webhook, Slack, or issue tracker.
 
 ## Next Module
 

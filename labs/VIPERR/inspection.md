@@ -9,14 +9,12 @@ In Anchore Enterprise 6.0, vulnerability data is presented at the **app version*
 
 ## How this lab module is structured
 
-Six phases, fully sequential:
+Four phases, fully sequential:
 
 1. **Understand the data foundation** — feeds, namespaces, and the enrichment data (KEV, EPSS, CVSS) Anchore Enterprise uses to prioritise findings.
 2. **List vulnerabilities at the version level** — get the consolidated view across all four assets.
 3. **Filter and prioritise** — use `jq` against the JSON output to slice by severity, fix availability, KEV, and EPSS.
 4. **Drill into a specific asset** — pull the original SBOM and inspect asset-specific metadata.
-5. **Triage with VEX annotations** — record `not_affected` decisions on vulnerabilities you've reviewed.
-6. **Export for downstream tools** — CSV vulnerability reports, CycloneDX VEX, and CSV package inventories.
 
 ## Phase 1 — Understand the data foundation
 
@@ -184,126 +182,6 @@ anchorectl app version asset get postgres \
   --app app --version v1.0.0 -o json | jq '{name, type, annotations, image_reference, system_metadata}'
 ```
 
-## Phase 5 — Triage with VEX annotations
-
-Not every vulnerability in the list is exploitable in your context. A library may be present but never invoked; a vulnerable code path may be reachable only with a configuration you don't ship; a fix may be backported by your distro vendor under a different name. **VEX annotations** capture those judgements in a machine-readable form, scoped to a specific `(vulnerability, package, version)` triple under an app version.
-
-Let's record one against the Python asset. `CVE-2019-10906` (Jinja2 sandbox escape) is a real CVE that affects `Jinja2==2.10`. The demo Python application doesn't render any user-supplied templates — it just returns JSON via Flask — so the vulnerable code path is never executed. That's a textbook `not_affected` / `vulnerable_code_not_in_execute_path` case.
-
-```bash
-anchorectl app version vex add v1.0.0 \
-  --app app \
-  --vuln-id CVE-2019-10906 \
-  --pkg-name Jinja2 \
-  --pkg-type python \
-  --pkg-version 2.10 \
-  --status not_affected \
-  --justification vulnerable_code_not_in_execute_path \
-  --impact-statement "The Flask routes in app.py never render user-supplied Jinja templates; the sandbox escape requires render_template_string() with attacker-controlled input, which is not present." \
-  --action-statement "No action required for this release. Tracked for upgrade in v1.1.0." \
-  --additional-details "Reviewed by security-team on 2026-05-06"
-```
-
-Output:
-
-```
- ✔ Added vex
-ID: <job-uuid>
-Vuln ID: CVE-2019-10906
-Status: not_affected
-Package: Jinja2
-```
-
-The `--status` and `--justification` values come from the CycloneDX/OpenVEX vocabulary:
-
-| `--status` | Meaning |
-|---|---|
-| `not_affected` | The vulnerability does not affect this product/version. Requires a `--justification`. |
-| `affected` | The vulnerability affects this product/version. Action expected. |
-| `fixed` | A fix has been applied to this product/version. |
-| `under_investigation` | Triage in progress; status will be revised. |
-
-| `--justification` (used with `not_affected`) | Meaning |
-|---|---|
-| `component_not_present` | The vulnerable component isn't actually present despite what the SBOM says. |
-| `vulnerable_code_not_present` | The component is present but the vulnerable code isn't (e.g. compiled-out feature). |
-| `vulnerable_code_not_in_execute_path` | The vulnerable code is present but never reached at runtime. |
-| `vulnerable_code_cannot_be_controlled_by_adversary` | An adversary has no input path to reach the vulnerable code. |
-| `inline_mitigations_already_exist` | A control already prevents exploitation (WAF rule, sandbox, syscall filter, …). |
-
-List the annotations you've made for this version:
-
-```bash
-anchorectl app version vex list v1.0.0 --app app
-```
-
-Re-run the version-level vuln list and pick out the matching entry to confirm it's still surfaced. A `not_affected` VEX annotation doesn't remove the underlying match from this list — it tags it so downstream consumers (the CycloneDX VEX export in Phase 6) and policy evaluation (the Policy Enforcement module) can apply it:
-
-```bash
-anchorectl app version vuln list v1.0.0 --app app -o json \
-  | jq '.[] | select(.vulnerabilityId == "CVE-2019-10906") | {vulnerabilityId, packageName, packageVersion, severity}'
-```
-
-Update an annotation as the situation evolves (status, justification, statements, additional details all editable):
-
-```bash
-anchorectl app version vex update <vuln-annotation-id> \
-  --app app --version v1.0.0 \
-  --status affected \
-  --action-statement "Upgrade scheduled for v1.0.1; mitigation in place via input validation."
-```
-
-Or remove it entirely:
-
-```bash
-anchorectl app version vex delete <vuln-annotation-id> \
-  --app app --version v1.0.0
-```
-
-> [!NOTE]
-> VEX annotations are scoped to an **app version**. Recording `not_affected` for `(CVE-2019-10906, Jinja2, 2.10)` under `v1.0.0` does not silently apply to `v1.0.1` — each release is its own assessment. The Remediation module covers when to use app-level vs. version-level annotations and how to manage VEX over time.
-
-## Phase 6 — Export for downstream tools
-
-Anchore Enterprise produces four exports you'll reach for in audit, compliance, and integration work. Each export is created as a job, fetched on completion, and either streamed to stdout or written to a file.
-
-**Combined SBOM (CycloneDX JSON)** — every asset under the version, merged into one CycloneDX SBOM document. Use this when a customer, an auditor, or a downstream tool wants "the SBOM for this release" rather than the per-asset SBOMs:
-
-```bash
-anchorectl app version export sbom v1.0.0 \
-  --app app \
-  --file ./app-v1.0.0-sbom.cdx.json
-```
-
-> [!NOTE]
-> This is different from `app version asset sbom get` which returns the original SBOM Anchore Enterprise stored for a single asset, in whatever format you ingested it. The command `app version export sbom` aggregates the package inventory of every asset under the version and emits a single CycloneDX JSON document — convenient for a release-level hand-off.
-
-**Vulnerability report (CSV)** — the canonical "send this to your security team / GRC tool" artifact:
-
-```bash
-anchorectl app version export vulnerabilities v1.0.0 \
-  --app app \
-  --file ./app-v1.0.0-vulnerabilities.csv
-```
-
-**Package inventory (CSV)** — every package across every asset, deduplicated, with location and source attribution:
-
-```bash
-anchorectl app version export packages v1.0.0 \
-  --app app \
-  --file ./app-v1.0.0-packages.csv
-```
-
-**VEX document (CycloneDX)** — every annotation you recorded in Phase 5, packaged as a CycloneDX VEX document you can hand to a customer, attach to a release, or feed into a downstream scanner:
-
-```bash
-anchorectl app version export vex v1.0.0 \
-  --app app \
-  --file ./app-v1.0.0-vex.cdx.json
-```
-
-The CycloneDX VEX uses the same status / justification vocabulary as `app version vex add`, so a downstream tool that understands CycloneDX VEX will pick up your `not_affected` decisions automatically.
-
 ## Recap
 
 You walked the full inspection loop for `app@v1.0.0`:
@@ -312,8 +190,6 @@ You walked the full inspection loop for `app@v1.0.0`:
 2. Pulled the **version-level vulnerability list** that consolidates findings across all four assets.
 3. Filtered with `jq` by severity, fix availability, KEV, and EPSS to get to the rows that matter.
 4. Drilled into the **Postgres asset** to view its asset-level metadata — annotations, type, and image reference — via `app version asset get`.
-5. Recorded a **VEX annotation** marking `CVE-2019-10906` in `Jinja2 2.10` as `not_affected / vulnerable_code_not_in_execute_path` for this release.
-6. Exported the **combined SBOM, vulnerabilities, packages, and VEX** as artifacts you can hand to other tools or stakeholders.
 
 Useful 5.x → 6.0 mappings to keep in mind:
 
@@ -323,7 +199,6 @@ Useful 5.x → 6.0 mappings to keep in mind:
 | `image content <image> -t java`                  | `app version package list <version> --app <app>` for the package inventory |
 | `image content <image> -t secret_search`         | Per-asset secret/malware/file content surfaces are not exposed at the asset CLI in 6.0 alpha; expected in a later iteration |
 | `image ancestors <digest>`                       | No equivalent in the v6 asset model yet |
-| Allowlists (in policy)                           | VEX annotations (`app version vex …`) for vulnerability suppression  |
 
 ## Next Module
 
