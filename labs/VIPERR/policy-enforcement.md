@@ -185,11 +185,10 @@ anchorectl app version policy status get v1.0.0 --app app
 Output:
 
 ```
- ✔ Got policy status
-Status: fail
-Last Evaluated: 2026-05-07T09:42:11Z
+ ✔ Fetched status
 Policy ID: viperr-lab-policy
-Policy Digest: sha256:a4f9…
+Policy Name: VIPERR Lab Policy
+Status: fail
 ```
 
 `Status: fail` means at least one `STOP` rule fired. To see *which* rules fired and on *which* findings, list the findings:
