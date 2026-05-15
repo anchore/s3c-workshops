@@ -9,12 +9,13 @@ In Anchore Enterprise 6.0, vulnerability data is presented at the **app version*
 
 ## How this lab module is structured
 
-Four phases, fully sequential:
+Five phases, fully sequential:
 
 1. **Understand the data foundation** — feeds, namespaces, and the enrichment data (KEV, EPSS, CVSS) Anchore Enterprise uses to prioritise findings.
-2. **List vulnerabilities at the version level** — get the consolidated view across all four assets.
-3. **Filter and prioritise** — use `jq` against the JSON output to slice by severity, fix availability, KEV, and EPSS.
-4. **Drill into a specific asset** — pull the original SBOM and inspect asset-specific metadata.
+2. **Inspecting contents of assets** — survey the asset roster and drill into per-asset metadata before turning to vulnerabilities.
+3. **List vulnerabilities at the version level** — get the consolidated view across all four assets.
+4. **Filter and prioritise** — use `jq` against the JSON output to slice by severity, fix availability, KEV, and EPSS.
+5. **Drill into a specific asset** — pull the original SBOM and inspect asset-specific metadata.
 
 ## Phase 1 — Understand the data foundation
 
@@ -61,7 +62,173 @@ A few things in that table matter for the rest of this module:
 
 To learn more about how Anchore Enterprise curates and prioritises feed data, see the [Anchore Enterprise vulnerability management docs](https://docs.anchore.com/current/docs/vulnerability_management/).
 
-## Phase 2 — List vulnerabilities at the version level
+## Phase 2 — Inspecting contents of assets
+
+Every asset under `v1.0.0` is backed by an SBOM that Anchore Enterprise stored at ingestion — a package inventory plus the metadata that frames it. This phase walks how to inspect those SBOMs at three levels: the roster of assets that have SBOMs attached, the per-asset metadata that describes each SBOM, and the SBOM document itself.
+
+### The asset roster
+
+List the assets (and therefore the SBOMs) attached to the version:
+
+```bash
+anchorectl app version asset list v1.0.0 --app app
+```
+
+Output:
+
+```
+ ✔ Fetched assets
+┌────────────────┬──────────────────────────────────────┬─────────────┬──────────────────────┐
+│ NAME           │ ID                                   │ TYPE        │ UPDATED              │
+├────────────────┼──────────────────────────────────────┼─────────────┼──────────────────────┤
+│ my-java-app    │ 7c4a9a8b-…                           │ application │ 2026-05-05T10:22:00Z │
+│ postgres       │ 1f2b3c4d-…                           │ container   │ 2026-05-05T10:24:11Z │
+│ ubuntu-jammy   │ 9e8d7c6b-…                           │ container   │ 2026-05-05T10:26:32Z │
+│ my-python-app  │ 5a4b3c2d-…                           │ application │ 2026-05-05T10:28:55Z │
+└────────────────┴──────────────────────────────────────┴─────────────┴──────────────────────┘
+```
+
+Two pieces of context to keep in mind as you read this list:
+
+- **`TYPE`** classifies the asset (and the shape of the SBOM behind it). `application` covers imported SBOMs and locally-produced filesystem scans; `container` covers images that were analyzed centrally (server-side) or distributed (client-side).
+- **`UPDATED`** is when the asset record last changed — useful when a re-scan or a metadata edit has happened since ingestion. The `system_metadata` block we'll inspect below has the matching `created_at` if you want to distinguish first-ingest from last-touch.
+
+> [!TIP]
+> `asset list` accepts `--name <pattern>` if you want to filter the roster — handy when an app has dozens of assets across many versions. For four assets you can skim the whole table; at scale, filter or `-o json | jq` it.
+
+### Per-asset SBOM metadata
+
+Drill into a single asset to see the metadata Anchore Enterprise stores about its SBOM. The JSON form of `asset get` is the richest view:
+
+```bash
+anchorectl app version asset get my-python-app \
+  --app app --version v1.0.0 -o json | jq
+```
+
+Output (abridged):
+
+```json
+{
+  "name": "my-python-app",
+  "type": "application",
+  "reference": "/tmp/my-python-app",
+  "annotations": {
+    "language": "python",
+    "role": "worker",
+    "source": "upstream-tarball"
+  },
+  "artifacts": {
+    "item_count": 14
+  },
+  "system_metadata": {
+    "id": "5a4b3c2d-…",
+    "created_at": "2026-05-05T10:28:55Z",
+    "updated_at": "2026-05-05T10:28:55Z"
+  }
+}
+```
+
+The fields worth knowing:
+
+| Field | What it tells you |
+|---|---|
+| `name` | The asset name you chose at ingestion (and may have updated since via `asset update`). |
+| `type` | `application` or `container`. |
+| `reference` | What this SBOM is *about*: a filesystem path for filesystem scans, an image reference for container assets, or a hand-off identifier for imported SBOMs. The provenance line. |
+| `annotations` | The free-form metadata set during ingestion or updated since — supplier, language, role, ownership, anything you want searchable later. |
+| `artifacts.item_count` | How many packages this SBOM contains. The headline composition number. |
+| `system_metadata` | The asset's internal UUID and the create / update timestamps. |
+
+Run `asset get` against the other three assets to compare:
+
+```bash
+anchorectl app version asset get my-java-app   --app app --version v1.0.0 -o json | jq
+anchorectl app version asset get postgres      --app app --version v1.0.0 -o json | jq
+anchorectl app version asset get ubuntu-jammy  --app app --version v1.0.0 -o json | jq
+```
+
+A few things you'll notice:
+
+- The `container` assets carry an image reference (`registry/repo:tag@sha256:…`) in `reference`; the `application` assets carry a path or a hand-off identifier instead.
+- Each asset's `artifacts.item_count` is the size of its SBOM in packages. The four counts add up to *roughly* the total package inventory for `v1.0.0`, with deduplication absorbing any packages two SBOMs happen to share.
+- The annotations you set in Visibility (`analysis=centralized` / `analysis=distributed` on the two container assets, `language` and `role` on the filesystem-scanned Python asset, and so on) are all preserved — they're what makes per-asset filtering possible at scale.
+
+> [!TIP]
+> If you only want one field from the JSON, pass it to `jq`. For example, `… -o json | jq '.artifacts.item_count'` returns just the package count for that SBOM — useful for scripted per-asset rollups, dashboards, or sanity checks that all expected assets ingested cleanly.
+
+### The SBOM document itself
+
+The metadata above tells you *about* the SBOM. To look at the SBOM document itself — every component, with its name, version, type, PURL, and licensing — fetch it with `asset sbom get`. Without `--file`, the SBOM is streamed to stdout so you can pipe it through `jq`:
+
+```bash
+anchorectl app version asset sbom get my-python-app \
+  --app app --version v1.0.0 \
+  | jq '{bomFormat, specVersion, componentCount: (.components | length)}'
+```
+
+Output:
+
+```json
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "componentCount": 14
+}
+```
+
+That confirms shape and size match the `artifacts.item_count` you read above. Look at a single component:
+
+```bash
+anchorectl app version asset sbom get my-python-app \
+  --app app --version v1.0.0 \
+  | jq '.components[] | select(.name == "Flask")'
+```
+
+Output:
+
+```json
+{
+  "bom-ref": "pkg:pypi/Flask@1.0.2",
+  "type": "library",
+  "name": "Flask",
+  "version": "1.0.2",
+  "purl": "pkg:pypi/Flask@1.0.2",
+  "licenses": [
+    { "license": { "id": "BSD-3-Clause" } }
+  ]
+}
+```
+
+Each component carries:
+
+| Field | What it tells you |
+|---|---|
+| `type` | What kind of component — `library`, `application`, `operating-system`, `container`, etc. |
+| `name` / `version` | The package coordinates. |
+| `purl` | The canonical Package URL — the identifier downstream tools key on for matching, license auditing, and attestation. |
+| `licenses` | The license expression(s) Syft or the source SBOM detected. |
+| `bom-ref` | A within-document reference; CycloneDX uses it for relationship and dependency edges. |
+
+Two cross-cutting views worth knowing:
+
+```bash
+# Component count grouped by type
+anchorectl app version asset sbom get my-python-app \
+  --app app --version v1.0.0 \
+  | jq '.components | group_by(.type) | map({type: .[0].type, count: length})'
+
+# Every license expression that appears, deduplicated
+anchorectl app version asset sbom get my-python-app \
+  --app app --version v1.0.0 \
+  | jq '[.components[] | .licenses[]? | .license.id // .license.name // .expression] | unique'
+```
+
+> [!NOTE]
+> The SBOM you get back is the document Anchore Enterprise stored at ingestion, in its original format. For the Python asset that's a CycloneDX JSON produced by Syft during the filesystem analyze; for `my-java-app` it's whatever CycloneDX or SPDX shape the upstream supplier handed off; for the container assets it's the CycloneDX SBOM Anchore Enterprise produced (centrally or via `image-analyze`). The shape of the components array is consistent across CycloneDX flavours; SPDX-formatted SBOMs use a different top-level structure (`packages` instead of `components`) — switch your `jq` selectors accordingly.
+
+With the asset roster, per-asset SBOM metadata, and the SBOM documents themselves surveyed, you have a complete picture of what `v1.0.0` contains.
+
+## Phase 3 — List vulnerabilities at the version level
 
 The headline command for inspection in 6.0:
 
@@ -134,7 +301,7 @@ The fields worth knowing:
 | `cvssAssessments` | Every CVSS score from every source — NVD, vendor advisories, etc. `isPrimary: true` marks Anchore Enterprise's preferred source. |
 | `relatedCves` | Cross-references — useful when a `GHSA-…` match has an underlying `CVE-…`. |
 
-## Phase 3 — Filter and prioritise
+## Phase 4 — Filter and prioritise
 
 The CLI returns the full list; filtering is done client-side with `jq`. Four filters cover most real triage work:
 
@@ -171,7 +338,7 @@ anchorectl app version vuln list v1.0.0 --app app -o json \
 > [!TIP]
 > If your org's prioritisation rule is "Critical/High **and** (KEV true **or** EPSS percentile ≥ 0.95)", that's one `jq` selector away — and the same rule expressed as an Anchore Enterprise policy will give you pass/fail evaluation, which is the next module's territory.
 
-## Phase 4 — Drill into vulns in a specific asset
+## Phase 5 — Drill into vulns in a specific asset
 
 The CLI exposes vulnerabilities at the **version** level. To narrow to a single asset (say "what does the Postgres image specifically contribute?"), pull the asset's metadata and cross-reference against the version-level vuln list.
 
@@ -187,9 +354,10 @@ anchorectl app version asset get postgres \
 You walked the full inspection loop for `app@v1.0.0`:
 
 1. Saw the **feed coverage** Anchore Enterprise is using — distro feeds, language-ecosystem feeds, NVD, KEV, EPSS, ClamAV.
-2. Pulled the **version-level vulnerability list** that consolidates findings across all four assets.
-3. Filtered with `jq` by severity, fix availability, KEV, and EPSS to get to the rows that matter.
-4. Drilled into the **Postgres asset** to view its asset-level metadata — annotations, type, and image reference — via `app version asset get`.
+2. Surveyed the **asset roster** under `v1.0.0` with `asset list`, then drilled into each asset's metadata — type, reference, annotations, and package count — with `asset get -o json`.
+3. Pulled the **version-level vulnerability list** that consolidates findings across all four assets.
+4. Filtered with `jq` by severity, fix availability, KEV, and EPSS to get to the rows that matter.
+5. Drilled into the **Postgres asset** to view its asset-level metadata — annotations, type, and image reference — via `app version asset get`.
 
 Useful 5.x → 6.0 mappings to keep in mind:
 
