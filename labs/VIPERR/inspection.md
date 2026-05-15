@@ -57,9 +57,6 @@ A few things in that table matter for the rest of this module:
 - **EPSS** (`epss_db`) is the Exploit Prediction Scoring System. Each CVE gets a score (0–1) representing the probability of exploitation in the next 30 days, and a percentile ranking. EPSS is great for prioritising the long tail of high-severity but unlikely-to-be-exploited findings.
 - **ClamAV** (`clamav_db`) is the malware-signature database used for centralized image scanning.
 
-> [!NOTE]
-> Feeds in 6.0 alpha are still served by the v5 catalog and Data Syncer service. The data is shared across both v5 and v6 surfaces — the same `feed list` command you've used before still works, and the freshness of each group still drives every match the new asset model produces. Anchore Enterprise will sync new data on a regular cycle; you can force an immediate sync with `anchorectl feed sync` if you've just brought the deployment up.
-
 To learn more about how Anchore Enterprise curates and prioritises feed data, see the [Anchore Enterprise vulnerability management docs](https://docs.anchore.com/current/docs/vulnerability_management/).
 
 ## Phase 2 — Inspecting contents of assets
