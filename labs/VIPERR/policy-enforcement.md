@@ -244,8 +244,6 @@ Useful 5.x → 6.0 mappings when moving from an image-centric to an application-
 | `policy add/get/list/update/activate`      | Unchanged — still managed via the v5 catalog                          |
 | Allowlists (in-bundle) for waivers         | Allowlists (in-bundle) — same shape, same purpose                    |
 
-**CI/CD pattern.** A pipeline gate is the same shape as the manual flow: ingest your assets (Visibility), call `app version policy status get` — which auto-enqueues an evaluation when one is needed — poll `anchorectl app job list app --status processing,complete` until the latest `evaluate-policy` job is done, then re-read `app version policy status get` for the final outcome. Treat `Status: fail` as exit-1 to break the build. When you need an explicit re-trigger (e.g. after attaching new assets to an existing version), `POST /v2/apps/<id>/jobs/evaluate-policy` is the manual escape hatch — the Remediation module walks through it. The VIPERR Remediation module also covers feeding the resulting findings back to developers via webhook, Slack, or issue tracker.
-
 ## Next Module
 
 Next: [Remediation](remediation.md) — closing the loop from "we found something" to "we did something about it."
