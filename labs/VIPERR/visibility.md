@@ -9,7 +9,7 @@ In Enterprise 6.0 this data is organised around three concepts:
 - **Asset** — a concrete artifact that belongs to a version: an SBOM you imported, a container image you scanned, a binary, a disk image, etc.
 
 > [!IMPORTANT]
-> **What's new in 6.0:** in 5.x you would `image add` first and then `application artifact add` to associate it. In 6.0 the act of adding an SBOM or scanning an image *is* the act of attaching it to a version — assets are created already-bound to their app and version. There is no separate "associate" step.
+> **What's new in 6.0:** in 5.x, if using the application groups feature, you would `image add` first and then `application artifact add` to associate it. In 6.0 the act of adding an SBOM or scanning an image *is* the act of attaching it to a version — assets are created already-bound to their app and version. Users can otherwise use the images capability without applications, if they wish. 
 
 ## How this lab module is structured
 
