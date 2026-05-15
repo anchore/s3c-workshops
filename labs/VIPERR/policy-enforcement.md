@@ -94,7 +94,7 @@ Each rule is a small object — here's the Stop-on-High-or-above rule from the b
 }
 ```
 
-The `vulnerabilities / package` trigger has a rich set of parameters available — `severity_comparison` (`=`, `!=`, `<`, `>`, `<=`, `>=`), CVSS v3 base/exploitability/impact comparisons and thresholds, EPSS score and percentile comparisons, `fix_available`, `vendor_only`, `max_days_since_creation`, `max_days_since_fix`, and `known_exploited_vulnerability` (the KEV flag). The bundle in `lab-policy.json` only uses three (`package_type`, `severity` + `severity_comparison`, `known_exploited_vulnerability`); build your real policies up from these primitives.
+The `vulnerabilities / package` trigger has a rich set of parameters available. The bundle in `lab-policy.json` only uses three (`package_type`, `severity` + `severity_comparison`, `known_exploited_vulnerability`); build your real policies up from these primitives.
 
 Import the bundle:
 
@@ -121,7 +121,7 @@ anchorectl policy list
 You should see `viperr-lab-policy` in the table alongside the reference policies from Phase 2.
 
 > [!TIP]
-> To iterate on the bundle, edit the JSON locally and re-import with `anchorectl policy update --input ./assets/policies/lab-policy.json`. Policy IDs are stable across updates; the rule set bodies and allowlists get replaced.
+> To iterate on the bundle, edit the JSON locally and re-import with `anchorectl policy update --input ./assets/policies/lab-policy.json`. 
 
 ## Phase 4 — Bind the policy to your application
 
