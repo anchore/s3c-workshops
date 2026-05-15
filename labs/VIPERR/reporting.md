@@ -7,14 +7,15 @@ Across the previous modules you've built up a substantial body of asset, vulnera
 
 ## How this lab module is structured
 
-Six phases. The first two pull together the per-version exports you've already used into a release workflow; the rest cover the account-wide reporting story.
+Seven phases. The first two pull together the per-version exports you've already used into a release workflow; the rest cover the account-wide reporting story plus the push-side notifications that pair with it.
 
 1. **The 6.0 reporting story** — two layers (per-version exports vs account-wide reports) and when to reach for each.
 2. **Per-version exports across a release line** — the six anchorectl exports as a release-notes pipeline, including VDR (the disclosure-report format we haven't covered yet).
 3. **Account-wide reports in the Web UI** — build a "Log4j across the whole account" report from the canonical questions security teams keep asking.
 4. **GraphQL — the API the UI sits on** — query the reports service directly, paginate, and integrate into your own tooling.
 5. **Scheduled queries** — cron-schedule a recurring report and pick up the results.
-6. **Runtime inventory reports** — Kubernetes / ECS summaries when you've connected an inventory agent.
+6. **Subscriptions and notifications** — push-side companion to scheduled queries; tell-me-when state changes on images / repos.
+7. **Runtime inventory reports** — Kubernetes / ECS summaries when you've connected an inventory agent.
 
 ## Phase 1 — The 6.0 reporting story
 
@@ -297,9 +298,77 @@ Each execution has a status (`queued`, `running`, `complete`, `failed`, `cancell
 To trigger an out-of-band run of a scheduled query (without waiting for the next cron fire), use `executeScheduledQuery` (synchronous, blocks until done) or `executeScheduledQueryAsync` (returns a result UUID immediately).
 
 > [!TIP]
-> When a scheduled query completes, the reports_worker emits an event that flows through the same notification plumbing as the subscriptions you activated in Remediation Phase 5. Configure a webhook endpoint receiving `scheduled_query_complete` events and you get "fresh report ready" deliveries straight into your downstream system — daily JSON drops to S3, Slack pings, automated SIEM ingestion.
+> When a scheduled query completes, the reports_worker emits an event that flows through the same notification plumbing as the image-record subscriptions in the next phase. Configure a webhook endpoint receiving `scheduled_query_complete` events and you get "fresh report ready" deliveries straight into your downstream system — daily JSON drops to S3, Slack pings, automated SIEM ingestion.
 
-## Phase 6 — Runtime inventory reports
+## Phase 6 — Subscriptions and notifications
+
+Scheduled queries are the *pull* path: you ask for the same report on a cadence. Subscriptions are the *push* path: Anchore Enterprise notices a state change on an image or repo and tells you about it. Both surface into the same event/notification plumbing — webhooks, email, GitHub issues, Jira, Slack, MS Teams, SIEM forwarders — so a team that wires up one usually wires up both.
+
+> [!IMPORTANT]
+> In 6.0 alpha, the subscription and event surfaces are still served by the v5 catalog and key on raw image records (registry / repo / tag), not on the app/version asset model. The subscriptions you activate here keep the underlying image record fresh; the v6 asset built on top of that record will reflect the refreshed data the next time you list vulnerabilities or re-run policy evaluation. Bridging subscriptions into the asset model directly is on the roadmap.
+
+### The subscription types
+
+| Type | What it does | Typical use |
+|---|---|---|
+| `tag_update` | New analysis when the same tag is re-pushed. | Catch supply-chain replacements where someone overwrites `:latest` or `:13`. |
+| `vuln_update` | New analysis-pass when feed data changes for a known image. | Catch new CVEs published against software you've already scanned. |
+| `policy_eval` | Re-run policy evaluation when the bound policy or the vulnerability picture changes. | Catch findings that newly cross a `stop` threshold. |
+| `analysis_update` | Notify when an analysis completes. | Drive downstream pipelines that consume SBOMs. |
+
+`tag_update` was already activated against `docker.io/library/postgres:13` in Visibility Phase 3. Add the other two for the same image — those are the ones that close the "state changed → tell me" loop:
+
+```bash
+anchorectl subscription activate docker.io/library/postgres:13 vuln_update
+anchorectl subscription activate docker.io/library/postgres:13 policy_eval
+```
+
+List the active subscriptions to confirm:
+
+```bash
+anchorectl subscription list
+```
+
+Output (truncated):
+
+```
+ ✔ List subscription
+┌──────────────────────────────────┬─────────────────┬────────┐
+│ KEY                              │ TYPE            │ ACTIVE │
+├──────────────────────────────────┼─────────────────┼────────┤
+│ docker.io/library/postgres:13    │ tag_update      │ true   │
+│ docker.io/library/postgres:13    │ vuln_update     │ true   │
+│ docker.io/library/postgres:13    │ policy_eval     │ true   │
+│ docker.io/library/postgres       │ repo_update     │ true   │
+└──────────────────────────────────┴─────────────────┴────────┘
+```
+
+By default Anchore Enterprise runs `vulnerability_scan` every 14400 seconds (4 hours) and `policy_eval` every 3600 seconds (1 hour); both timers are configurable on the deployment side.
+
+### Events and notification endpoints
+
+When a subscription fires it produces an *event*. Events are what get routed to your endpoints. List recent events:
+
+```bash
+anchorectl event list
+```
+
+Endpoints are configured per-deployment. In 6.0 alpha the management surface for those endpoints is the Web UI under `/system/notifications` and the `system_integrations` API — `anchorectl system integration` only supports `list`, `get`, and `delete`. To add a webhook, navigate to **System → Notifications → Endpoints** in the UI and provide the URL, optional auth header, and the subscription types it should receive. The same endpoint configuration delivers both subscription events and the `scheduled_query_complete` events from Phase 5 — one notification surface, two upstream producers.
+
+> [!TIP]
+> A common starter setup for a development team:
+>
+> - Critical / KEV → page on-call (PagerDuty webhook).
+> - New `stop` finding on the production version → Slack #security-alerts.
+> - `scheduled_query_complete` for the daily KEV report → daily Slack digest.
+>
+> All three are the same Anchore subscription / notification plumbing — only the endpoint routing differs.
+
+### See it in the UI
+
+Open the Web UI at `/events`. Each event has a payload (the same JSON you'd see at the API), a timestamp, and the subscription or scheduled query that produced it. When you attach a webhook, that payload is what it'll deliver.
+
+## Phase 7 — Runtime inventory reports
 
 The reporting service has a small set of REST endpoints (and matching GraphQL queries) dedicated to runtime inventory — what's actually running in your Kubernetes and ECS clusters, cross-referenced against the SBOMs and vulnerability matches Anchore Enterprise already has.
 
@@ -352,7 +421,8 @@ You walked the full reporting surface for the data you accumulated across the la
 3. Built a **"Log4j across the account" report in the Web UI** using the *Tags by Vulnerability* template and saved it.
 4. Re-ran the same question against the **reports GraphQL API**, with a tour of the filter inputs and the queries worth knowing.
 5. **Scheduled a daily KEV exposure query**, learned how executions land, and noted the notification path for "report ready" events.
-6. Surveyed the **runtime inventory reporting surface** — the REST endpoints and the GraphQL queries that scope reports to what's actually running in K8s / ECS.
+6. Activated `vuln_update` and `policy_eval` **subscriptions** on the Postgres tag, surveyed how events flow into the same notification endpoints as scheduled queries, and saw where webhooks land in the Web UI.
+7. Surveyed the **runtime inventory reporting surface** — the REST endpoints and the GraphQL queries that scope reports to what's actually running in K8s / ECS.
 
 Useful 5.x → 6.0 mappings:
 
@@ -365,11 +435,13 @@ Useful 5.x → 6.0 mappings:
 | SBOM hand-off via per-image download                           | `app version export sbom <version> --app <app>` produces a merged release-level SBOM |
 | Disclosure docs hand-assembled from VEX + vuln list            | `app version export vdr <version> --app <app>` produces a CycloneDX VDR in one shot |
 | Kubernetes runtime reports under `/reports`                    | Unchanged — still the v5 reports service, still keyed on image records |
+| `anchorectl subscription activate <image> vuln_update`         | Unchanged — subscriptions are still v5-backed and key on raw images  |
+| Notification endpoint config in `/system/notifications`        | Unchanged — same Web UI surface, same payload shapes                 |
 
 **Where to go from here:**
 
 - For programmatic integration patterns (CI/CD gating using exports, SIEM forwarding from scheduled queries, attaching VDR documents to release artifacts), see the [Anchore Enterprise reporting documentation](https://docs.anchore.com/current/docs/vulnerability_management/reports/).
-- For the Kubernetes / ECS inventory side, set up `anchorectl inventory` against a cluster and the runtime inventory queries in Phase 6 start returning real data — that's the natural follow-on to this module.
+- For the Kubernetes / ECS inventory side, set up `anchorectl inventory` against a cluster and the runtime inventory queries in Phase 7 start returning real data — that's the natural follow-on to this module.
 - For the VIPERR loop end-to-end on a different application: start a fresh `app`, run a release through Visibility → Inspection → Policy Enforcement → Remediation → Reporting, and notice how the same six exports and the same account-wide reports surface the new release alongside `v1.0.0` / `v1.0.1` with no extra plumbing.
 
 That closes the VIPERR lab. You've taken a release from "we have an SBOM" through "we know what's in it", "we have rules about it", "we've triaged and shipped a fix", and "we can tell anyone who asks." The same five-module shape applies to every release that comes after — only the assets change.
