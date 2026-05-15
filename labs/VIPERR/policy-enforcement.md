@@ -211,11 +211,7 @@ Output (truncated):
 │ ...          │ ...  │ ...            │ ...       │ ...         │ ...                                          │
 └──────────────┴──────┴────────────────┴───────────┴─────────────┴──────────────────────────────────────────────┘
 ```
-
-`17ed63bd-…` is Stop-on-KEV; `d7b4a6af-…` is Stop-on-High-or-above. Both fire on `CVE-2021-44228` (log4j) — KEV catches it once for the KEV flag, severity catches it again as a Critical. Every other High/Critical match shows up under the severity rule.
-
-> [!NOTE]
-> Findings serialize `action` as a lowercased string (`"stop"` / `"warn"` / `"go"`) even though the policy bundle JSON requires the uppercased enum (`STOP` / `WARN` / `GO`). The v5 catalog stores the bundle in one case; the v6 component_catalog returns findings in the other. Filter on the lowercase form when querying findings output.
+You will see multiple lines for the same package. This is because both rules fire on `CVE-2021-44228` (log4j) — KEV catches it once for the KEV flag, severity catches it again as a Critical. Every other High/Critical match shows up under the severity rule.
 
 Each finding cites the rule that fired, the action, the vulnerability, the package, and which asset contributed the package. JSON output gives you the full detail blob — explore it for fields like the rule ID, the matched vulnerability, the package coordinates, and any allowlist state attached to the finding:
 
@@ -223,9 +219,6 @@ Each finding cites the rule that fired, the action, the vulnerability, the packa
 anchorectl app version policy findings list v1.0.0 --app app -o json \
   | jq '.[] | select(.action == "stop")'
 ```
-
-> [!TIP]
-> `findings list` is paginated under the hood — for a large deployment, prefer `-o json` and process programmatically.
 
 > [!IMPORTANT]
 > The auto-enqueue fires only when the **policy digest has changed** (e.g. you re-imported the bundle with `policy update --input ...`) or when no evaluation exists for the version yet. Changes to the version itself (attaching new assets, for instance) don't bump the digest, so subsequent `status get` calls return the cached evaluation until either the digest moves or you trigger a fresh evaluation explicitly via `POST /v2/apps/<id>/jobs/evaluate-policy`. The Remediation module shows that explicit-trigger pattern.
@@ -240,7 +233,7 @@ You walked the full policy enforcement loop for `app@v1.0.0`:
 4. **Bound** it to `app` via `app update --policy-id`.
 5. Triggered an **evaluation**, read the version-level **status**, and inspected the per-rule **findings**.
 
-Useful 5.x → 6.0 mappings:
+Useful 5.x → 6.0 mappings when moving from an image-centric to an application-centric pattern:
 
 | 5.x                                        | 6.0                                                                  |
 |--------------------------------------------|----------------------------------------------------------------------|
