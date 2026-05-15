@@ -30,9 +30,6 @@ A policy bundle is a JSON document with three parts that matter for this module:
 | `allowlists` | Items that suppress specific findings *inside the policy itself* — usually by `(gate, trigger_id)` with an optional expiry. Useful for blanket exceptions that should travel with the policy bundle. |
 | `sbom_mappings` | Which rule sets and allowlists apply to which artifacts. In simple deployments you'll have one mapping covering everything; large deployments use mappings to apply different rule sets to different SBOM names/versions. |
 
-> [!NOTE]
-> Policy bundles in 6.0 alpha are stored and managed by the v5 catalog (under `anchorectl policy …`). Anchore Enterprise's component_catalog service reads a bundle from there, parses it into the v6 model, and runs evaluation against the asset model. v5 field names (`whitelists`, `policies`) are auto-aliased to v6 names (`allowlists`, `rule_sets`), so existing bundles import unchanged. The one v6-only field you must set on each rule set is `artifact_type: "sbom"` — the executable policy skips any rule set whose `artifact_type` isn't `sbom`, so a bundle without it imports cleanly but evaluates to zero findings.
-
 **Binding.** A policy applies to an application either through:
 
 - **App-level binding** — a specific policy ID is set on the application via `anchorectl app update <app> --policy-id <id>`. This wins over the account default.
@@ -73,9 +70,6 @@ For the rest of the module we'll use a small custom policy bundled at `./assets/
 |---|---|---|---|
 | Stop-on-KEV | `vulnerabilities / package` | `STOP` | Any package match for a vulnerability in the CISA Known Exploited Vulnerabilities catalog, regardless of severity. |
 | Stop-on-High-or-above | `vulnerabilities / package` | `STOP` | Any package with a High or Critical severity match. |
-
-> [!NOTE]
-> The bundle's `rule_set` and `rule` IDs are UUIDs assigned by the catalog rather than human-friendly slugs. The UUIDs are stable across re-imports of the same bundle; we'll refer to rules by their behaviour throughout this module and only quote IDs where the API output forces us to.
 
 Each rule is a small object — here's the Stop-on-High-or-above rule from the bundle:
 
