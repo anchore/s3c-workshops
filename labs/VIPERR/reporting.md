@@ -1,19 +1,18 @@
 # Reporting
 
-By the end of Remediation, `app` has two versions with opposite policy verdicts: `v1.0.0` is `Status: fail` on the un-waived findings, and `v1.0.1` is `Status: pass` after the Python dependency upgrade. Reporting is how you turn that state into **evidence other people can act on** — the compliance CSV that proves `v1.0.1` is ship-ready for an audit ticket, the CycloneDX VDR that hands the disposition to a customer or regulator, the release-level SBOM that travels with the artifact, the "everything failing policy across the account" dashboard for the security team, the daily CSV that drops into a SIEM, the Kubernetes runtime inventory snapshot attached to a change ticket.
+By the end of Remediation, `app` has two versions with opposite policy verdicts: `v1.0.0` is `Status: fail` on the un-waived findings, and `v1.0.1` is `Status: pass` after the Python dependency upgrade. Reporting is how you turn that state into **evidence other people can act on** — the compliance CSV that proves `v1.0.1` is ship-ready for an audit ticket, the CycloneDX VDR that hands the disposition to a customer or regulator, the release-level SBOM that travels with the artifact, the "everything failing policy across the account" dashboard for the security team, the webhook that pages the oncall engineer when state changes.
 
 > [!IMPORTANT]
 > This module assumes you completed the [Visibility](visibility.md), [Inspection](inspection.md), [Policy Enforcement](policy-enforcement.md), and [Remediation](remediation.md) modules. It uses the same `app`, the `v1.0.0` and `v1.0.1` versions, the four assets attached to `v1.0.0`, the Python asset attached to `v1.0.1`, the VEX annotations recorded against `v1.0.0`, and the `viperr-lab-policy` bundle with its log4j allowlist and 14-day grace rule.
 
 ## How this lab module is structured
 
-Five phases. The first two pull together the per-version exports you've already used into a release workflow; the rest cover the account-wide reporting story plus the push-side notifications that pair with it.
+Four phases. The first two pull together the per-version exports you've already used into a release workflow; the rest cover the account-wide reporting story plus the push-side notifications that pair with it.
 
 1. **The 6.0 reporting story** — two layers (per-version exports vs account-wide reports) and when to reach for each.
 2. **Per-version exports across a release line** — the six anchorectl exports (SBOM, vulnerabilities, packages, VEX, policy-compliance, VDR) and which audience each one is shaped for.
 3. **Account-wide reports in the Web UI** — build a "Log4j across the whole account" report from the canonical questions security teams keep asking.
 4. **Subscriptions and notifications** — push-side reporting; tell-me-when state changes on images / repos.
-5. **Runtime inventory reports** — Kubernetes / ECS summaries when you've connected an inventory agent.
 
 ## Phase 1 — The 6.0 reporting story
 
@@ -208,36 +207,6 @@ Endpoints are configured per-deployment. In 6.0 alpha the management surface for
 
 Open the Web UI at `/events`. Each event has a payload (the same JSON you'd see at the API), a timestamp, and the subscription that produced it. When you attach a webhook, that payload is what it'll deliver.
 
-## Phase 5 — Runtime inventory reports
-
-The reporting service has a small set of REST endpoints dedicated to runtime inventory — what's actually running in your Kubernetes and ECS clusters, cross-referenced against the SBOMs and vulnerability matches Anchore Enterprise already has.
-
-These endpoints only return data once you've connected an inventory source: the `anchorectl inventory` agent for Kubernetes, or an ECS inventory ingestion pipeline. The lab's `app@v1.0.0` doesn't have runtime inventory wired up; this phase is a *map of the surface* you can use when it is.
-
-### REST endpoints
-
-```bash
-# Cluster + namespace summary
-curl -sS \
-  -u "${ANCHORECTL_USERNAME}:${ANCHORECTL_PASSWORD}" \
-  -H "x-anchore-account: admin" \
-  "${ANCHORECTL_URL}/v2/reports/kubernetes-clusters-summary" | jq
-
-# Vulnerability summary scoped to the runtime inventory
-curl -sS \
-  -u "${ANCHORECTL_USERNAME}:${ANCHORECTL_PASSWORD}" \
-  -H "x-anchore-account: admin" \
-  "${ANCHORECTL_URL}/v2/reports/kubernetes-vulnerabilities-summary?severities=critical&severities=high" | jq
-
-# Image summary with policy + vuln filters
-curl -sS \
-  -u "${ANCHORECTL_USERNAME}:${ANCHORECTL_PASSWORD}" \
-  -H "x-anchore-account: admin" \
-  "${ANCHORECTL_URL}/v2/reports/kubernetes-images-summary?compliance=fail&severities=critical" | jq
-```
-
-The same data is surfaced under the Web UI's runtime inventory views once you've connected an inventory source. The "unscanned images" view is the underrated one — every running container that *isn't* in the catalog is a coverage blind spot, and the UI lets you see and triage that gap directly.
-
 ## Recap
 
 You walked the full reporting surface for the two versions of `app` you built across the lab — `v1.0.0` with its un-waived `Status: fail`, and `v1.0.1` with its clean `Status: pass`:
@@ -246,7 +215,6 @@ You walked the full reporting surface for the two versions of `app` you built ac
 2. Walked the **six per-version exports** — SBOM, vulnerability CSV, package CSV, VEX, policy-compliance CSV, and VDR — and saw which audience each one is shaped for.
 3. Built a **"Log4j across the account" report in the Web UI** using the *Tags by Vulnerability* template and saved it.
 4. Activated `vuln_update` and `policy_eval` **subscriptions** on the Postgres tag and saw where the notification endpoints land in the Web UI.
-5. Surveyed the **runtime inventory reporting surface** — the REST endpoints and the Web UI views that scope reports to what's actually running in K8s / ECS.
 
 Useful 5.x → 6.0 mappings:
 
@@ -257,14 +225,12 @@ Useful 5.x → 6.0 mappings:
 | Compliance CSV via UI download                                 | `app version export policy-compliance <version> --app <app>` (introduced in Phase 2)      |
 | SBOM hand-off via per-image download                           | `app version export sbom <version> --app <app>` produces a merged release-level SBOM |
 | Disclosure docs hand-assembled from VEX + vuln list            | `app version export vdr <version> --app <app>` produces a CycloneDX VDR in one shot |
-| Kubernetes runtime reports under `/reports`                    | Unchanged — still the v5 reports service, still keyed on image records |
 | `anchorectl subscription activate <image> vuln_update`         | Unchanged — subscriptions are still v5-backed and key on raw images  |
 | Notification endpoint config in `/system/notifications`        | Unchanged — same Web UI surface, same payload shapes                 |
 
 **Where to go from here:**
 
 - For programmatic integration patterns (CI/CD gating using exports, attaching VDR documents to release artifacts), see the [Anchore Enterprise reporting documentation](https://docs.anchore.com/current/docs/vulnerability_management/reports/).
-- For the Kubernetes / ECS inventory side, set up `anchorectl inventory` against a cluster and the runtime inventory views in Phase 5 start populating with real data — that's the natural follow-on to this module.
 - For the VIPERR loop end-to-end on a different application: start a fresh `app`, run a release through Visibility → Inspection → Policy Enforcement → Remediation → Reporting, and notice how the same six exports and the same account-wide reports surface the new release alongside `v1.0.0` / `v1.0.1` with no extra plumbing.
 
 That closes the VIPERR lab. You've taken a release from "we have an SBOM" through "we know what's in it", "we have rules about it", "we've triaged and shipped a fix", and finally "we can **prove** all of that to anyone who needs to see it" — `v1.0.0`'s compliance trail and disclosure docs for the audit, `v1.0.1`'s clean compliance CSV for the ship-review ticket, the VDR for the customer, the saved Web UI report for the security team, the webhook for the oncall engineer. The same five-module shape applies to every release that comes after — only the assets change.
