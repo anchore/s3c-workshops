@@ -1,6 +1,6 @@
 # Reporting
 
-By the end of Remediation, `app` has two versions with opposite policy verdicts: `v1.0.0` is `Status: fail` on the un-waived findings, and `v1.0.1` is `Status: pass` after the Python dependency upgrade. Reporting is how you turn that state into **evidence other people can act on** — the compliance CSV that proves `v1.0.1` is ship-ready for an audit ticket, the CycloneDX VDR that hands the disposition to a customer or regulator, the release-level SBOM that travels with the artifact, the "everything failing policy across the account" dashboard for the security team, the webhook that pages the oncall engineer when state changes.
+By the end of Remediation, `app` has two versions with opposite policy verdicts: `v1.0.0` is `Status: fail` on the un-waived findings, and `v1.0.1` is the **fixed release** with `Status: pass`. Reporting is how `v1.0.1` clears its audit gate — by **supplying the evidence** that proves it: the compliance CSV that shows the verdict, the CycloneDX VDR that hands the disposition to a customer or regulator, the release-level SBOM that travels with the artifact, plus the account-wide dashboards and notification webhooks that keep the security team and oncall engineer informed downstream.
 
 > [!IMPORTANT]
 > This module assumes you completed the [Visibility](visibility.md), [Inspection](inspection.md), [Policy Enforcement](policy-enforcement.md), and [Remediation](remediation.md) modules. It uses the same `app`, the `v1.0.0` and `v1.0.1` versions, the four assets attached to `v1.0.0`, the Python asset attached to `v1.0.1`, the VEX annotations recorded against `v1.0.0`, and the `viperr-lab-policy` bundle with its log4j allowlist and 14-day grace rule.
@@ -40,6 +40,8 @@ Six per-version exports cover most release-level hand-offs:
 | `app version export vdr VERSION` | CycloneDX VDR JSON | Customer / regulator disclosure documents |
 
 Every command shares the same shape: pass the version name, the `--app`, and either `--file <path>` (write to disk) or no flag (stream to stdout). Each export is created as a job, the CLI polls until it's complete, and the resulting download is written out.
+
+The rest of this phase walks the six exports twice. First against `v1.0.0` — the **audit trail of the failed release**: what was in it, what was wrong, the triage decisions you recorded against each finding. Then against `v1.0.1` — the **fixed release**, where the same six exports become the **evidence package** that proves the release passes audit. The act of supplying that paired set is what clears the gate: *here's the rule book, here's the failed state we triaged, here's the fix we shipped, all measured the same way.*
 
 ### SBOM (CycloneDX JSON)
 
@@ -112,6 +114,41 @@ The resulting document contains the components (from the merged SBOM), the vulne
 
 > [!NOTE]
 > VDR and the VEX-only export (`app version export vex`) overlap but are not the same. **VEX** is just the annotations as a CycloneDX VEX document. **VDR** is the full disclosure: components, vulnerabilities, *and* the VEX disposition attached to each. Give a customer the VDR; give an internal triage tool the VEX file.
+
+### The same six against v1.0.1
+
+`v1.0.1` is what shipped — one upgraded Python asset, no remaining un-waived findings, `Status: pass`. Re-run the same six exports against the new version to produce the clean evidence trail:
+
+```bash
+anchorectl app version export sbom v1.0.1 --app app --file ./app-v1.0.1-sbom.cdx.json
+anchorectl app version export vulnerabilities v1.0.1 --app app --file ./app-v1.0.1-vulnerabilities.csv
+anchorectl app version export packages v1.0.1 --app app --file ./app-v1.0.1-packages.csv
+anchorectl app version export vex v1.0.1 --app app --file ./app-v1.0.1-vex.cdx.json
+anchorectl app version export policy-compliance v1.0.1 --app app --file ./app-v1.0.1-policy-compliance.csv
+anchorectl app version export vdr v1.0.1 --app app --file ./app-v1.0.1-vdr.cdx.json
+```
+
+What changes from v1.0.0's output:
+
+| Export | `v1.0.0` (audit trail) | `v1.0.1` (clean evidence) |
+|---|---|---|
+| SBOM | Four assets merged into one CycloneDX document | The shipped Python asset only — the SBOM that travels with the release |
+| Vulnerabilities | Rich CVE picture across four assets | The un-waived Python CVEs are gone; what's left is dramatically smaller |
+| Packages | Deduplicated inventory across four assets | The shipped Python inventory |
+| VEX | The three annotations recorded in Remediation Phase 1 | **Empty.** VEX is per-version and the `v1.0.0` decisions don't carry forward (per Remediation Phase 3) — and the findings they triaged don't exist in `v1.0.1` anyway |
+| Policy-compliance | One row per un-waived `stop` finding driving the `Status: fail` | **Empty.** The proof that what you shipped passes the same rule book the failed version was measured against |
+| VDR | Disclosure listing vulnerabilities with their VEX dispositions | Clean disclosure — the customer-facing record for the shipped release |
+
+### The audit hand-off
+
+`v1.0.1` is the fixed release that ships. The paired set of `v1.0.0` and `v1.0.1` artifacts is **the evidence that gets it through audit** — not by assertion, but by supplying the reviewer the data they'd ask for anyway:
+
+- `v1.0.0`'s **policy-compliance CSV** + **VEX** export → *here are the findings that drove the failure, and here are the per-finding decisions we recorded against them.*
+- `v1.0.0`'s **VDR** + **SBOM** → *here's the full state of the release we did not ship.*
+- `v1.0.1`'s **policy-compliance CSV** (empty) → *here's the proof the fixed release passes the same rule book the failed version was measured against.*
+- `v1.0.1`'s **VDR** + **SBOM** → *here's the customer-facing disclosure and SBOM for what shipped.*
+
+Every artifact is generated against the **same policy bundle**, so the reviewer can re-run the evaluation themselves and arrive at the same verdict. That's what makes the package audit-grade: not *we triaged it*, but *we triaged it against a rule book anyone can verify.*
 
 ## Phase 3 — Account-wide reports in the Web UI
 
