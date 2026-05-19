@@ -1,6 +1,6 @@
 # Reporting
 
-By the end of Remediation, `app` has two versions with opposite policy verdicts: `v1.0.0` is `Status: fail` on the un-waived findings, and `v1.0.1` is the **fixed release** with `Status: pass`. Reporting is how `v1.0.1` clears its audit gate — by **supplying the evidence** that proves it: the compliance CSV that shows the verdict, the CycloneDX VDR that hands the disposition to a customer or regulator, the release-level SBOM that travels with the artifact, plus the account-wide dashboards and notification webhooks that keep the security team and oncall engineer informed downstream.
+By the end of Remediation you've updated the Python application, shipped `v1.0.1`, and the new version now passes policy evaluation cleanly — while `v1.0.0` sits in the catalog as the failed-and-triaged historical record. Reporting is how `v1.0.1` becomes **audit-ready**: the compliance CSV that shows the pass verdict, the CycloneDX VDR for a customer or regulator, the release-level SBOM that travels with the artifact, plus the account-wide dashboards and notification webhooks that keep the security team and oncall engineer informed downstream.
 
 > [!IMPORTANT]
 > This module assumes you completed the [Visibility](visibility.md), [Inspection](inspection.md), [Policy Enforcement](policy-enforcement.md), and [Remediation](remediation.md) modules. It uses the same `app`, the `v1.0.0` and `v1.0.1` versions, the four assets attached to `v1.0.0`, the Python asset attached to `v1.0.1`, the VEX annotations recorded against `v1.0.0`, and the `viperr-lab-policy` bundle with its log4j allowlist and 14-day grace rule.
@@ -41,7 +41,7 @@ Six per-version exports cover most release-level hand-offs:
 
 Every command shares the same shape: pass the version name, the `--app`, and either `--file <path>` (write to disk) or no flag (stream to stdout). Each export is created as a job, the CLI polls until it's complete, and the resulting download is written out.
 
-The rest of this phase walks the six exports twice. First against `v1.0.0` — the **audit trail of the failed release**: what was in it, what was wrong, the triage decisions you recorded against each finding. Then against `v1.0.1` — the **fixed release**, where the same six exports become the **evidence package** that proves the release passes audit. The act of supplying that paired set is what clears the gate: *here's the rule book, here's the failed state we triaged, here's the fix we shipped, all measured the same way.*
+The rest of this phase walks the six exports twice. First against `v1.0.0` — the **audit trail of the failed release**: the historical context for *why* you needed the fix and *what* you triaged on the way. Then against `v1.0.1` — the **fixed release you just shipped**, where the same six exports form the evidence package that makes the release audit-ready. The `v1.0.0` trail supports the story; the `v1.0.1` artifacts are the proof of pass.
 
 ### SBOM (CycloneDX JSON)
 
@@ -141,14 +141,14 @@ What changes from v1.0.0's output:
 
 ### The audit hand-off
 
-`v1.0.1` is the fixed release that ships. The paired set of `v1.0.0` and `v1.0.1` artifacts is **the evidence that gets it through audit** — not by assertion, but by supplying the reviewer the data they'd ask for anyway:
+You've updated the Python application, shipped `v1.0.1`, and the new version passes policy evaluation. The **`v1.0.1` evidence package** is what makes the release **audit-ready**:
 
-- `v1.0.0`'s **policy-compliance CSV** + **VEX** export → *here are the findings that drove the failure, and here are the per-finding decisions we recorded against them.*
-- `v1.0.0`'s **VDR** + **SBOM** → *here's the full state of the release we did not ship.*
-- `v1.0.1`'s **policy-compliance CSV** (empty) → *here's the proof the fixed release passes the same rule book the failed version was measured against.*
-- `v1.0.1`'s **VDR** + **SBOM** → *here's the customer-facing disclosure and SBOM for what shipped.*
+- `v1.0.1`'s **policy-compliance CSV** (empty) → *the verdict against the rule book is pass.*
+- `v1.0.1`'s **VDR** → *the customer-facing disclosure for the release.*
+- `v1.0.1`'s **SBOM** → *the SBOM that travels with the artifact downstream.*
+- `v1.0.1`'s **vulnerability and package CSVs** → *the full inventory of what's in the release, in formats every audit / GRC tool ingests.*
 
-Every artifact is generated against the **same policy bundle**, so the reviewer can re-run the evaluation themselves and arrive at the same verdict. That's what makes the package audit-grade: not *we triaged it*, but *we triaged it against a rule book anyone can verify.*
+The `v1.0.0` artifacts (compliance CSV showing the stops, VEX export showing the triage decisions, VDR for the historical record) are the **supporting context** — the audit trail of *why* the fix was needed and *what* you triaged along the way. A reviewer who wants the story has them; a reviewer who just wants the verdict has `v1.0.1`'s evidence on its own. Either way, every artifact is generated against the same policy bundle — the reviewer can re-run the evaluation themselves and arrive at the same verdict. That's what makes the release audit-ready: not *trust us*, but reproducible measurement.
 
 ## Phase 3 — Account-wide reports in the Web UI
 
@@ -270,4 +270,4 @@ Useful 5.x → 6.0 mappings:
 - For programmatic integration patterns (CI/CD gating using exports, attaching VDR documents to release artifacts), see the [Anchore Enterprise reporting documentation](https://docs.anchore.com/current/docs/vulnerability_management/reports/).
 - For the VIPERR loop end-to-end on a different application: start a fresh `app`, run a release through Visibility → Inspection → Policy Enforcement → Remediation → Reporting, and notice how the same six exports and the same account-wide reports surface the new release alongside `v1.0.0` / `v1.0.1` with no extra plumbing.
 
-That closes the VIPERR lab. You've taken a release from "we have an SBOM" through "we know what's in it", "we have rules about it", "we've triaged and shipped a fix", and finally "we can **prove** all of that to anyone who needs to see it" — `v1.0.0`'s compliance trail and disclosure docs for the audit, `v1.0.1`'s clean compliance CSV for the ship-review ticket, the VDR for the customer, the saved Web UI report for the security team, the webhook for the oncall engineer. The same five-module shape applies to every release that comes after — only the assets change.
+That closes the VIPERR lab. You've taken a release from "we have an SBOM" through "we know what's in it", "we have rules about it", "we've updated the app and it now passes evaluation", and finally **"the release is audit-ready and we can prove it to anyone who needs to see it"** — `v1.0.0`'s compliance trail and VEX export as the audit trail of what you triaged, `v1.0.1`'s clean compliance CSV and VDR as the proof of pass for the release, the saved Web UI report for the security team, the webhook for the oncall engineer. The same five-module shape applies to every release that comes after — only the assets change.
