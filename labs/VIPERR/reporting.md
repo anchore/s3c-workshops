@@ -1,6 +1,6 @@
 # Reporting
 
-Across the previous modules you've built up a substantial body of asset, vulnerability, policy, and remediation data — `app@v1.0.0` with four assets and a VEX-and-allowlist-shaped policy outcome, plus `app@v1.0.1` with the Python application's dependencies remediated. Reporting is how you get that data out to the people and systems that need it: hand a release SBOM to a customer, surface "everything failing policy across the whole account" to a security team, find every image still running a vulnerable Log4j, drop a daily CSV into a SIEM, attach a Kubernetes runtime inventory snapshot to a change ticket.
+By the end of Remediation, `app` has two versions with opposite policy verdicts: `v1.0.0` is `Status: fail` on the un-waived findings, and `v1.0.1` is `Status: pass` after the Python dependency upgrade. Reporting is how you turn that state into **evidence other people can act on** — the compliance CSV that proves `v1.0.1` is ship-ready for an audit ticket, the CycloneDX VDR that hands the disposition to a customer or regulator, the release-level SBOM that travels with the artifact, the "everything failing policy across the account" dashboard for the security team, the daily CSV that drops into a SIEM, the Kubernetes runtime inventory snapshot attached to a change ticket.
 
 > [!IMPORTANT]
 > This module assumes you completed the [Visibility](visibility.md), [Inspection](inspection.md), [Policy Enforcement](policy-enforcement.md), and [Remediation](remediation.md) modules. It uses the same `app`, the `v1.0.0` and `v1.0.1` versions, the four assets attached to `v1.0.0`, the Python asset attached to `v1.0.1`, the VEX annotations recorded against `v1.0.0`, and the `viperr-lab-policy` bundle with its log4j allowlist and 14-day grace rule.
@@ -81,7 +81,7 @@ anchorectl app version export packages v1.0.0 \
 
 ### VEX document (CycloneDX VEX)
 
-Every VEX annotation you recorded in Remediation Phase 3 (`not_affected`, `affected`, `under_investigation`), packaged as a CycloneDX VEX document you can hand to a customer, attach to a release, or feed into a downstream scanner:
+Every VEX annotation you recorded in Remediation Phase 1 (`not_affected`, `affected`, `under_investigation`), packaged as a CycloneDX VEX document you can hand to a customer, attach to a release, or feed into a downstream scanner:
 
 ```bash
 anchorectl app version export vex v1.0.0 \
@@ -140,16 +140,19 @@ for v in v1.0.0 v1.0.1; do
 done
 ```
 
-Now the diff that matters for release notes:
+Now the diffs that matter for release notes and audit hand-off:
 
 ```bash
 diff ./reports/v1.0.0/packages.csv ./reports/v1.0.1/packages.csv \
   | head -40
 diff ./reports/v1.0.0/vulnerabilities.csv ./reports/v1.0.1/vulnerabilities.csv \
   | head -40
+diff ./reports/v1.0.0/policy-compliance.csv ./reports/v1.0.1/policy-compliance.csv
 ```
 
 The package diff shows the seven Python pins that moved (Flask, requests, PyYAML, urllib3, Jinja2, cryptography, Pillow). The vulnerability diff shows the CVEs that came off the list as a result. Wire those two diffs into your release-notes generator and you have automated "here's what we fixed" copy.
+
+The compliance-CSV pair is the **release-readiness signal**: `v1.0.0`'s file is non-empty (one row per un-waived `stop` finding driving the `Status: fail`), `v1.0.1`'s file is empty (the policy passed cleanly). For an audit ticket or ship/no-ship review, attaching both files is the evidence trail — *here's the state we found, here's the state we shipped, here's the rule book they were measured against.*
 
 > [!TIP]
 > The same pattern works for any pair of versions — `v1.0.0` vs `v1.0.0-rc1`, `production` vs `staging`, `last_release` vs `current`. As long as both versions are attached to the same app, the diff is meaningful.
@@ -302,7 +305,7 @@ To trigger an out-of-band run of a scheduled query (without waiting for the next
 
 ## Phase 6 — Subscriptions and notifications
 
-Scheduled queries are the *pull* path: you ask for the same report on a cadence. Subscriptions are the *push* path: Anchore Enterprise notices a state change on an image or repo and tells you about it. Both surface into the same event/notification plumbing — webhooks, email, GitHub issues, Jira, Slack, MS Teams, SIEM forwarders — so a team that wires up one usually wires up both.
+Subscriptions are the **push side of reporting**: instead of asking for a state snapshot on a cadence, you ask Anchore Enterprise to tell you the moment the state changes — *the policy on this tag just started failing*, *a new CVE was just published against software you ship*, *the supplier just re-pushed the image you're tracking*. Scheduled queries (Phase 5) deliver pre-defined reports on a clock; subscriptions deliver state-change reports on event. Both surface into the same event/notification plumbing — webhooks, email, GitHub issues, Jira, Slack, MS Teams, SIEM forwarders — so a team that wires up one usually wires up both.
 
 > [!IMPORTANT]
 > In 6.0 alpha, the subscription and event surfaces are still served by the v5 catalog and key on raw image records (registry / repo / tag), not on the app/version asset model. The subscriptions you activate here keep the underlying image record fresh; the v6 asset built on top of that record will reflect the refreshed data the next time you list vulnerabilities or re-run policy evaluation. Bridging subscriptions into the asset model directly is on the roadmap.
@@ -414,10 +417,10 @@ The same data is accessible through the GraphQL schema, where you can combine th
 
 ## Recap
 
-You walked the full reporting surface for the data you accumulated across the lab:
+You walked the full reporting surface for the two versions of `app` you built across the lab — `v1.0.0` with its un-waived `Status: fail`, and `v1.0.1` with its clean `Status: pass`:
 
 1. Mapped the **two layers** — per-version exports for release hand-offs, account-wide reports for cross-cutting questions — and the alpha-state mismatch where the account-wide layer is still v5.
-2. Ran the full **per-version export pipeline** for both `v1.0.0` and `v1.0.1`, including VDR, and diffed the package and vulnerability CSVs to drive release notes.
+2. Ran the full **per-version export pipeline** for both `v1.0.0` and `v1.0.1`, including VDR, and diffed the package, vulnerability, and policy-compliance CSVs — the last pair being the audit-grade release-readiness evidence.
 3. Built a **"Log4j across the account" report in the Web UI** using the *Tags by Vulnerability* template and saved it.
 4. Re-ran the same question against the **reports GraphQL API**, with a tour of the filter inputs and the queries worth knowing.
 5. **Scheduled a daily KEV exposure query**, learned how executions land, and noted the notification path for "report ready" events.
@@ -444,4 +447,4 @@ Useful 5.x → 6.0 mappings:
 - For the Kubernetes / ECS inventory side, set up `anchorectl inventory` against a cluster and the runtime inventory queries in Phase 7 start returning real data — that's the natural follow-on to this module.
 - For the VIPERR loop end-to-end on a different application: start a fresh `app`, run a release through Visibility → Inspection → Policy Enforcement → Remediation → Reporting, and notice how the same six exports and the same account-wide reports surface the new release alongside `v1.0.0` / `v1.0.1` with no extra plumbing.
 
-That closes the VIPERR lab. You've taken a release from "we have an SBOM" through "we know what's in it", "we have rules about it", "we've triaged and shipped a fix", and "we can tell anyone who asks." The same five-module shape applies to every release that comes after — only the assets change.
+That closes the VIPERR lab. You've taken a release from "we have an SBOM" through "we know what's in it", "we have rules about it", "we've triaged and shipped a fix", and finally "we can **prove** all of that to anyone who needs to see it" — `v1.0.0`'s compliance trail and disclosure docs for the audit, `v1.0.1`'s clean compliance CSV for the ship-review ticket, the VDR for the customer, the daily KEV report for the security team, the webhook for the oncall engineer. The same five-module shape applies to every release that comes after — only the assets change.
