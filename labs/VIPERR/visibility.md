@@ -1,492 +1,442 @@
 # Visibility
 
-Anchore Enterprise generates detailed SBOMs at each step in the SDLC process, providing a complete inventory of the software components on everything from OS packages, files and any direct and transitive dependencies used in your language specific applications.
-These SBOMs are stored and managed by Anchore Enterprise to facilitate ongoing visibility across many use cases from vulnerability management to compliance.
+Anchore Enterprise generates and stores detailed SBOMs at every stage of the SDLC, giving you a complete inventory of the software components in your applications — from OS packages and files to direct and transitive dependencies in your language ecosystems. These SBOMs feed every other capability in the platform: vulnerability matching, policy compliance, VEX, and reporting.
 
-## Lab Exercise
+In Enterprise 6.0 this data is organised around three concepts:
 
-An application starts life as code, and eventually (in the cloud native world) transforms into a distributable image that can be deployed as production container. 
-The end-to-end process is commonly referred to as the SDLC (Software Delivery Lifecycle), and across the different stages Anchore Enterprise can track and manage the associated SBOM.
-In this lab, you will utilize examples that take you through the lifecycle from source code to container images to create SBOMs, get visibility into their "ingredients" and use tooling that showcase useful capabilities e.g. multi-arch images.
+- **Application** — a logical product or service you ship.
+- **Application Version** — a specific release or build of that application (`v1.0.0`, `2026-Q2-rc1`, `HEAD`, …).
+- **Asset** — a concrete artifact that belongs to a version: an SBOM you imported, a container image you scanned, a binary, a disk image, etc.
 
-### Working with source code
+> [!IMPORTANT]
+> **What's new in 6.0:** in 5.x, if using the application groups feature, you would `image add` first and then `application artifact add` to associate it. In 6.0 the act of adding an SBOM or scanning an image *is* the act of attaching it to a version — assets are created already-bound to their app and version. Users can otherwise use the images capability without applications, if they wish. 
 
-Let's change into the directory containing our amazing new Go application code that our dev team have just produced.
+## How this lab module is structured
+
+This module will walk you through the following tasks or activities: 
+
+1. **Define the application and a version** — the container that everything else attaches to.
+2. **Import an SBOM as an asset** — use a bundled SPDX SBOM that represents an externally-produced hand-off.
+3. **Scan container images as assets** — try both centralized (Anchore Enterprise pulls) and distributed (anchorectl pulls and scans locally) flows against public images.
+4. **Scan a filesystem as an asset** — extract a bundled tarball of a small Python application and let anchorectl generate the SBOM directly from the source tree.
+5. **Inspect what you've collected** — list assets, fetch SBOMs, view aggregated vulnerabilities.
+6. **Update asset metadata** — edit annotations, rename, or reclassify an existing asset in place without re-scanning.
+
+The workflow is fully sequential — each phase builds on the last. By the end you'll have one application, one version, and four assets attached to it from four different ingestion paths, with metadata that's been refined after the fact. You'll then be ready to start collecting insights on this inventory in the next module.
+
+We'll use the demo assets in `./assets/` throughout.
+
+## Phase 1 — Define the application and a version
+
+Create a new application in Anchore Enterprise. The `--contact-name` flag is required.
+
 ```bash
-cd ./assets/app
+anchorectl app add app \
+  --description "Webinar Demo App" \
+  --contact-name "Platform Team"
 ```
-Now we need to create a new Anchore Enterprise application "instance", with which we can later map our source code and images.
+
+Output:
+
+```
+ ✔ Created app
+Name: app
+Description: Webinar Demo App
+Contact Name: Platform Team
+ID: <app-uuid>
+```
+
+Confirm the new application is in place:
+
 ```bash
-anchorectl application add app --description "Webinar Demo App"
+anchorectl app list
 ```
+
 > [!NOTE]
-> You can only currently - add, edit and delete applications via the anchorectl or Anchore Enterprise API
+> An application can also be created with `--policy-id` to bind it to a specific policy at creation time. We'll cover policy assignment in the Policy Enforcement module.
 
-Review the first example application source code and generate an SBOM (locally) for it. 
-Then we can map the source code reference and SBOM into Anchore. 
-This would be a typical task that gets carried out during CI.
+You'll notice that your newly added application has no versions listed. Now add the first version. Versions live under an application, so you have to tell anchorectl which app the version belongs to with `--app`.
+
 ```bash
-anchorectl syft --source-name app --source-version HEAD -o json . | anchorectl source add github.com/anchore/webinar-demo@73522db08db1758c251ad714696d3120ac9b55f4 --from -
+anchorectl app version add v1.0.0 \
+  --app app \
+  --description "First release with Docker support" \
+  --status in_progress
 ```
-Make note of the UUID in the output we will use this later.
+
+Output:
+
+```
+  ✔ Added version
+Name: v1.0.0
+ID: <version_uuid>
+Description: First release with Docker Support
+Status: in_progress
+```
+
+List the versions for the app:
+
+```bash
+anchorectl app version list app
+```
+
+Anything you ingest from here on will be attached to a specific `app` + `version`. You can supply these explicitly with `--app` / `--version` on every command, or you can set environment variables to default them:
+
+```bash
+export ANCHORECTL_APP=app
+export ANCHORECTL_VERSION=v1.0.0
+```
+
+The remaining commands in this module will pass `--app` / `--version` explicitly so the workflow is easy to copy-paste, but feel free to use the env vars instead.
+
+## Phase 2 — Import an SBOM as an asset
+
+A common 6.0 pattern is to ingest SBOMs that were produced *outside* of Anchore Enterprise — by a vendor, by a build pipeline, by a different scanner, or by a hand-off from another team. Anchore Enterprise accepts every mainstream SBOM format and treats each one as a first-class asset.
+
+### Supported SBOM formats
+
+| Format               | Spec versions          | File extensions       |
+|----------------------|------------------------|-----------------------|
+| Syft JSON            | current Syft schema    | `.json`               |
+| CycloneDX JSON       | 1.x                    | `.cdx.json`, `.json`  |
+| CycloneDX XML        | 1.x                    | `.cdx.xml`, `.xml`    |
+| SPDX 2 JSON          | SPDX-2.x               | `.spdx.json`, `.json` |
+| SPDX 2 tag-value     | SPDX-2.x               | `.spdx`               |
+| SPDX 3 JSON          | 3.x                    | `.spdx.json`, `.json` |
+
+> [!NOTE]
+> Format is auto-detected from the file contents.
+
+For this module we've bundled an example SPDX SBOM at `./assets/sboms/my_java_app.spdx.json` — treat it as if it landed in your inbox from a build pipeline or an upstream supplier. It represents a real-world Java application and includes packages with known vulnerabilities, so you'll have something interesting to look at in later modules.
+
+> [!NOTE]
+> You can produce SBOMs with Syft, AnchoreCTL, or any other ecosystem tool that emits one of the [supported formats](#supported-sbom-formats). For this module we're skipping the generation step and using the file as-is.
+
+Import the SBOM as an asset under `app@v1.0.0`. Every asset needs a logical `--asset` name — this is how you'll refer to it later (it doesn't have to match anything in the SBOM itself). Use `--annotations` to capture metadata that doesn't fit into the asset name — supplier, format, license terms, source URL, build commit, anything you want surfaced in the UI and queryable later. Recording the source format in an annotation is a small habit that pays off when you're auditing a vendor hand-off months later.
+
+```bash
+anchorectl app version asset add sbom ./assets/sboms/my_java_app.spdx.json \
+  --app app \
+  --version v1.0.0 \
+  --asset my-java-app \
+  --type application \
+  --annotations "supplier=upstream-vendor,format=spdx-2-json,received=2026-05-05" \
+  --wait
+```
+
+The `--wait` flag tells anchorectl to block until the underlying ingestion job has completed. Without `--wait` you get the job ID back immediately and can poll separately — we'll cover that in Phase 3.
+
+Output:
+
+```
+ ✔ Added SBOM asset
+Name: my-java-app
+ID: <job-uuid>
+Type: application
+```
+
+> [!NOTE]
+> **What just happened:** Anchore Enterprise queued a job that decomposed the uploaded SBOM into packages, persisted them under the version, and ran a vulnerability scan against the deduplicated package set. All of this happens asynchronously through the Jobs API.
+
+The same command handles every supported format the same way — drop a CycloneDX XML, an SPDX tag-value, or an SPDX 3 JSON document in and the server detects and routes it automatically. Adjust the `--type` and `--annotations` to fit what you're ingesting (for example `--type firmware` for a partner-supplied embedded device SBOM, `--type library` for an upstream library hand-off).
+
+## Phase 3 — Scan container images as assets
+
+In 6.0 you can attach a container image to a version two different ways, and we'll do one of each so you see both flows:
+
+- **Centralized analysis** (`app version asset add container-image-remote`) — Anchore Enterprise pulls the image from your registry and analyzes it server-side. The SBOM is produced inside Enterprise.
+- **Distributed analysis** (`app version asset add container-image`) — anchorectl pulls (or reads) the image where you're running the command, generates the SBOM **locally**, and uploads the result. Enterprise never sees the image bytes.
+
+Both end up as container assets under `app@v1.0.0`, and from Phase 4 onward they're indistinguishable — the difference is only *where the SBOM was generated* and *which side made the network connection to the registry*.
+
+### Centralized analysis with `add container-image-remote`
+
+We'll start by letting Anchore Enterprise pull `docker.io/library/postgres:13` and analyze it server-side. Imagine this is the database image that ships alongside the Java application whose SBOM you ingested in Phase 2.
+
+> [!NOTE]
+> The image we're using is public, so no credentials are needed. For private registries, register credentials first with `anchorectl registry add <registry> --username <user>` (the password is supplied via the `ANCHORECTL_REGISTRY_PASSWORD` environment variable). The registry argument supports wildcards like `gcr.io/myproject/*`. Inspect what's configured with `anchorectl registry list`.
+
+```bash
+anchorectl app version asset add container-image-remote docker.io/library/postgres:13 \
+  --app app \
+  --version v1.0.0 \
+  --asset postgres \
+  --type container \
+  --annotations "role=database,purpose=primary-store,analysis=centralized" \
+  --wait
+```
+
+Output:
+
+```
+ ✔ Submitted container image asset
+ ✔ Added image asset
+Name: postgres
+ID: <job-uuid>
+Type: container
+```
+
+> [!NOTE]
+> **What just happened:** Anchore Enterprise queued a job that pulled the image from Docker Hub, generated an SBOM server-side, persisted the packages and image metadata under the version, and ran a vulnerability scan. The Jobs API does the work asynchronously — `--wait` just polls until it finishes.
+
 > [!TIP]
-> If you already have Syft installed you can use it $ syft -o json . | anchorectl source add ...
+> Drop `--wait` and the command returns the job ID immediately — useful in CI pipelines where you want to fan out work and check results later. Track in-flight jobs with `anchorectl app job list app --status processing` and inspect a single job with `anchorectl app job get <job-id> --app app`. Job statuses are `pending`, `processing`, `complete`, `failed`, `cancelled`.
 
-Now we associate the source artifact to our application tag HEAD. As you continuously integrate you also can update Anchore Enterprise with the latest code. 
+### Distributed analysis with `add container-image`
+
+Now we'll do the same thing the other way round — anchorectl pulls a small public image (`docker.io/library/ubuntu:jammy`, around 30 MB compressed), generates the SBOM locally, and uploads only the result. Use this flow when the image shouldn't leave your build host (air-gapped builds, ephemeral CI runners, embargoed artifacts), or when Anchore Enterprise can't reach your registry but you can.
+
 ```bash
-anchorectl application artifact add app@HEAD source <retrieved-source-UUID>
-```
-Now output the SBOM contents to screen in the table format. This could be useful for reporting or as output step in CI.
-```bash
-anchorectl source sbom <retrieved-source-UUID> -o table
-```
-Check out the new application in the Web UI by visiting `/applications` and see the mapping over to our source control commit.
-Finally, please explore how you can export an SBOM.
-
-The team would repeat the above process for each commit they make in the code repository. 
-In fact, they could automate this, by adding these steps into their pipeline scripts.
-
-**Now we are ready for release v1.0.0!**
-
-The dev team has been working hard over a long sprint to add "Docker support"! 
-First let's look at these changes to the app.
-```bash
-cd ./assets/app:v1.0.0
-```
-As we did before, let's create a new release called v1.0.0 for the 'app' in Anchore.
-```bash
-anchorectl application version add app@v1.0.0
-```
-Now let's build the SBOM for this release and associate a source artifact to our app v1.0.0 version. All in one line!
-```bash
-anchorectl syft --source-name app --source-version v1.0.0 -o json . | anchorectl source add github.com/anchore/webinar-demo@88ae9c020d4b730d510e97a31848e181c4934bf0 --branch 'v1.0.0' --author 'author-from-ci@example.com' --application 'app@v1.0.0' --workflow-name 'default' --from -
-```
-This time they added some richer metadata to the source code associations.
-
-Check out the new application in the Web UI by visiting `/applications` and see the Dockerfile getting picked up.
-Finally drill in and export an SBOM.
-
-This release contained a Dockerfile, so let's move on to build an image.
-
-### Working with images
-
-The v1.0.0 app like many in the cloud native world, is now ready to be turned into an image. When we do this we might also use bring in additional software and place it into an OS base image such as ubuntu minimal.
-With extra software our SBOM will grow and as such we will want to get insight into this artifact. This section will cover how we can add such an image.
-
-Build the v1.0.0 app image and tag it as v1.0.0.
-```bash
-docker build . -t app:v1.0.0
+anchorectl app version asset add container-image docker.io/library/ubuntu:jammy \
+  --app app \
+  --version v1.0.0 \
+  --asset ubuntu-jammy \
+  --type container \
+  --annotations "role=base-image,os=ubuntu-22.04,analysis=distributed" \
+  --wait
 ```
 
-Let's submit our new image to Anchore Enterprise using Distributed mode and instruct anchorectl to use the image from the Docker Daemon on our environment.
-```bash
-anchorectl image add app:v1.0.0 --from docker 
+Output:
+
 ```
-
-> [!NOTE] 
-> Anchore Enterprise can analyze an image in two modes: Distributed And Centralized. 
-> Distributed Mode will instruct AnchoreCTL to locally analyze and image and send the SBOM to Anchore Enterprise.
-> Centralized Mode will instruct Anchore Enterprise to pull the image from a registry to analyze (Centralized mode)
-> Both have their own advantages. One thing to note, with Distributed mode, you do not get Malware scanning as this can only take place on the server in Centralized mode.
-
-Let's look at Distributed and Centralized mode in more detail before continuing:
-
-**Distributed Mode**
-
-Instruct AnchoreCTL to pull an image from the Docker Dameon and locally analyze. _(using this approach is NOT recommended for anything other than testing)_
-```bash
-anchorectl image add app:v1.0.0 --from docker 
-```
-
-Instruct AnchoreCTL to pull an image from a remote Registry and locally analyze. _(might require local registry credential setup)_
-```bash
-anchorectl image add docker.io/danperry/app:v2.0.0 --from registry 
-```
-
-Instruct AnchoreCTL to pull an image from a docker archived tar and locally analyze.
-```bash
-docker save app:v1.0.0 -o app-v1.0.0.tar
-anchorectl image add app:v1.0.0 --from docker-archive:./app-v1.0.0.tar
-```
-
-**Centralized Mode**
-
-Instruct AnchoreCTL to centrally analyze the image tag on the Anchore Enterprise Server. _(might require remote registry credential setup)_
-```bash
-anchorectl image add docker.io/danperry/app:v2.0.0
-```
-
-Now we will continue to explore some more options and build and ingest our app:v1.0.0 SBOM.
-
-Instruct AnchoreCTL to set a custom registry, repo and tag name.
-```bash
-anchorectl image add image.fakehost.com:newapp:v1.0.0 --from docker:app:v1.0.0
-anchorectl image add tar.fakehost.com:newapp:v1.0.0 --from docker-archive:./app-v1.0.0.tar
-```
-
-### Working with Dockerfile's
-
-Anchore Enterprise can inspect an image and determine/rebuild/guess the Dockerfile. For some use cases this can be enough to determine critical details about how the image was built.
-In other use cases and some scenarios (different image builders other than Docker Dameon store history data differently).
-For these cases you might want to supply a Dockerfile when adding the image to Anchore Enterprise.
-Let's cover how both of these options can get you the visibility needed.
-
-Let's use AnchoreCTL to get the Dockerfile for a third-party image. This is an image we don't have or have not supplied a Dockerfile for.
-```bash
-anchorectl image get centos:latest -o json | jq -r '.imageDetail[0].dockerfile' | base64 --decode
-FROM scratch
-ADD file:420712a90b0934202b326dc06b73638ab8e4603d12be2c23d67d834eb6cfc052 in /
-LABEL org.label-schema.schema-version=1.0 org.label-schema.name=CentOS Base Image org.label-schema.vendor=CentOS org.label-schema.license=GPLv2 org.label-schema.build-date=20210915
-CMD ["/bin/bash"]
-```
-
-Using AnchoreCTL we can see that the dockerfileMode shows "guessed". Which checks out.
-```bash
-anchorectl -o json image get centos:latest | jq '.imageContent'
-{
-  "metadata": {
-    "arch": "arm64",
-    "distro": "centos",
-    "distroVersion": "8",
-    "dockerfileMode": "Guessed",
-    "imageSize": 83941353,
-    "layerCount": 1
-  }
-}
-```
-
-Instruct AnchoreCTL to analyze our local app image, and supplement with the common Dockerfile build artifact.
-```bash
-anchorectl image add app:v1.0.0 --from docker --dockerfile ./Dockerfile
-```
-As we have already analysis/submitted/scanned this image, Anchore Enterprise is clever and uses the image digest it notices no differences and will not perform certain scan steps as a result. 
-However, in this case we want to tell Anchore Enterprise to re analyze the image so that we can pick up and use the newly supplied Dockerfile data.
-We can do this by using a command argument '--force'
-
-Instruct AnchoreCTL to **re-analyze** our local app image, and supplement it with a new Dockerfile build artifact.
-```bash
-anchorectl image add app:v1.0.0 --from docker --dockerfile ./Dockerfile --force
-```
-
-Now we should see the dockerfileMode show "Actual"
-```bash
-anchorectl -o json image get app:v1.0.0 | jq '.imageContent'
-{
-  "metadata": {
-    "arch": "arm64",
-    "distro": "alpine",
-    "distroVersion": "3.10.4",
-    "dockerfileMode": "Actual",
-    "imageSize": 14856704,
-    "layerCount": 2
-  }
-}
-```
-
-Finally, using AnchoreCTL, lets checkout our app:v1.0.0 and see if we can grab the Dockerfile data.
-```bash
-anchorectl image get app:v1.0.0 -o json | jq -r '.imageDetail[0].dockerfile' | base64 --decode
-# first stage does the building
-# for UX purposes, I'm naming this stage `build-stage`
-
-FROM golang:1.20-alpine AS build-stage
-WORKDIR /go/src/go-app
-COPY app.go .
-COPY go.mod go.sum ./
-RUN go mod tidy
-RUN go mod download
-RUN go build -o app .
-
-# starting second stage
-FROM alpine:3.10.4
-
-# copy the binary from the `build-stage`
-COPY --from=build-stage /go/src/go-app/app /bin
-
-CMD app
-```
-
-Now let's associate this container image to v1.0.0 of the app for our Application
-```bash
-anchorectl application artifact add app@v1.0.0 image $(anchorectl image get app:v1.0.0 -o json | jq -r '.imageDetail[0].imageDigest')
-```
-
-BTW, you can also use image get -o id to get the unique sha digest
-```bash
-anchorectl image get app:v1.0.0 -o id
-```
-
-Use AnchoreCTL to inspect your new application artifact list
-```bash
-anchorectl application artifact list app@v1.0.0
+Name: jammy
+ID: <job-uuid>
+Type: container
 ```
 
 > [!NOTE]
-> Why supply the Dockerfile?
-> Simply - It will provide extra data about the image. Anchore Enterprise does inspect and infer some of the image history using the layers, however this is limited and no substitute for a full Dockerfile.
-> Once submitted, you can and your wider team can see the full Dockerfile contents in the Anchore Enterprise Web UI. Secondly, you can build policy rules based on the Dockerfile contents. 
-> For example, raise a policy violation if my image is exposing port 22 with EXPOSE 22 or the container is running the application with USER root. More details in the policy section.
+> **What just happened:** anchorectl pulled `ubuntu:jammy` from Docker Hub to your local machine, ran the analysis client-side (the embedded Syft scans the image, the embedded analyzers extract metadata), packaged the result, and uploaded the SBOM to Enterprise as an asset. The Jobs API still tracks the upload server-side, but the image itself was never touched by Enterprise.
 
-### Working with multi-architecture images
+By default `add container-image` reads from the registry. The `--from` flag changes the source:
 
-Anchore Enterprise can support multi-architecture images and as such we will need to generate separate SBOMs for each architecture.
-This might be useful, if you ship a product or image that needs to work across many types of architectures. 
-Let's run through an example
+| Source                       | Use it when …                                                       |
+|------------------------------|---------------------------------------------------------------------|
+| `--from registry` (default)  | The image is in a registry you can reach.                           |
+| `--from docker`              | The image is loaded in a local Docker daemon.                       |
+| `--from podman`              | The image is loaded in a local Podman.                              |
+| `--from docker-archive:<path>` | You have a `docker save` tarball on disk.                         |
 
-Let's first analyze a public multi-architecture image.
+### Centralized vs distributed — when to choose which
+
+| Centralized (`add container-image-remote`)        | Distributed (`add container-image`)                       |
+|---------------------------------------------------|-----------------------------------------------------------|
+| Anchore Enterprise pulls the image from the registry | anchorectl pulls or reads the image where it's running |
+| SBOM is generated server-side                     | SBOM is generated client-side and uploaded                |
+| Best when Anchore Enterprise has direct registry access | Best when the image stays on the build host         |
+| Compute happens in Enterprise                     | Compute happens wherever you run anchorectl               |
+| One network egress (Anchore Enterprise → registry) | No exposure of the registry to Anchore Enterprise        |
+
+### Watching the registry for new tags
+
+For images that change frequently — base images, third-party services you depend on, your own published artifacts — Anchore Enterprise can watch a repository continuously and analyze new tags as they appear. Set up a watch on the Postgres repository you analyzed centrally:
+
 ```bash
-anchorectl image add docker.io/centos:latest
+anchorectl repo add docker.io/library/postgres --auto-subscribe
 ```
-_Please note this image is hosted publicly so NO credentials are required. However, Anchore Enterprise does support private repositories that conform to the docker_v2 api._
 
-Now review this CentOS image in the `images` tab in the Web UI, once loaded select the 'Image MetaData' Tab. 
-You will notice it contains several images, this is because the CentOS image is a multi architecture image.
-Let's now re-add the CentOS image, but this time be specific and add only the ARM64 platform image.
+`--auto-subscribe` enables a `tag_update` subscription on the **repository**, so any new tag pushed becomes a fresh analysis automatically.
+
+For the specific tag you analyzed earlier (`docker.io/library/postgres:13`), explicitly activate a `tag_update` subscription on that exact tag so a re-push of the same tag triggers a re-analysis as well:
+
 ```bash
-anchorectl image add docker.io/centos:latest --from registry --platform  arm64 --force
+anchorectl subscription activate docker.io/library/postgres:13 tag_update
 ```
 
-Check the Web UI once again to see the arm64 architecture in the Image SHA and also check out the 'Changelog' UI tab.
-You can see the new Architecture, but also which of the contents/software changed. This leads to another topic called SBOM drift. 
-SBOM Drift can help detect deeper security issues, we will cover this more in a later lab on policy enforcement. 
+Confirm both are active:
 
-### Using your own Annotations
-
-Sometimes you might want to add your own metadata about a particular image, for example which team 'owns' or has responsibility. 
-Anchore Enterprise allows you to add your own annotation(s) to images, which can later be queried and visible.
-
-First let's set a test annotation
 ```bash
-anchorectl image add  ubuntu:latest --annotation test=123
-```
-
-Second let's retrieve our annotation(s)
-```bash
-anchorectl image get -o=json ubuntu:latest | jq '.annotations'
-{
-  "test": "123"
-}
-```
-
-### Using watch, subscription & notifications
-
-Anchore Enterprise can be configured to watch registries for new images. When discovered they will automatically be submitted for analysis.
-Additionally, you can also enable several types of subscriptions that can trigger a notification (email, slack, webhook) when an event like a new image from a watch occurs.
-Let's run through this with some examples below.
-
-Check if we are watching the repo we have scanned (in this case we are not)
-```bash
-anchorectl repo add --dry-run docker.io/danperry/nocode
-```
-Output
-```
- ✔ Added repo
-┌───────────────────────────┬─────────────┬────────┐
-│ KEY                       │ TYPE        │ ACTIVE │
-├───────────────────────────┼─────────────┼────────┤
-│ docker.io/danperry/nocode │ repo_update │ false  │
-└───────────────────────────┴─────────────┴────────┘
-```
-We can subscribe to every new tag, or in this case any change being submitted to the repository
-```bash
-anchorectl repo add --auto-subscribe docker.io/danperry/nocode
-```
-Output
-```
-✔ Added repo
-┌───────────────────────────┬─────────────┬────────┐
-│ KEY                       │ TYPE        │ ACTIVE │
-├───────────────────────────┼─────────────┼────────┤
-│ docker.io/danperry/nocode │ repo_update │ true   │
-└───────────────────────────┴─────────────┴────────┘
-```
-We can not only watch for new tags as they are pushed into the registry. But we can also add a subscription that will trigger an event and notification.
-```bash
+anchorectl repo list
 anchorectl subscription list
 ```
-Output
-```
-✔ Fetched subscriptions
-┌─────────────────────────────────┬─────────────────┬────────┐
-│ KEY                             │ TYPE            │ ACTIVE │
-├─────────────────────────────────┼─────────────────┼────────┤
-│ docker.io/danperry/nocode       │ repo_update     │ true   │
-│ docker.io/danperry/nocode:1.0.0 │ alerts          │ true   │
-└─────────────────────────────────┴─────────────────┴────────┘
-```
-Let's activate the tag_update subscription
+
+> [!IMPORTANT]
+> Repo watches and subscriptions in 6.0 alpha are still served by the v5 catalog and operate on raw image records. Tags discovered through a watch get analyzed and show up in the system, but they are **not automatically attached to your app/version as assets** — you'll still run `app version asset add container-image-remote` to bind a specific tag to a release. Treat watches as a "keep this image inventory fresh" mechanism, separate from your release tracking.
+
+## Phase 4 — Scan a filesystem as an asset
+
+Not everything you ship is a container image, and not every artifact comes with a pre-produced SBOM. For source code that hasn't been packaged yet, an unpacked tarball, a virtual machine root filesystem, or any other on-disk content, anchorectl can scan a directory locally and ingest the result as an asset in one step using `app version asset add filesystem DIRECTORY`.
+
+For this phase we've bundled a small Python application as a tarball at `./assets/my-python-app.tar.gz`. It contains application source plus a `requirements.txt` pinning a handful of dependencies at versions with known vulnerabilities — exactly the kind of artifact a build pipeline might hand off mid-flight.
+
+Extract it somewhere convenient:
+
 ```bash
-anchorectl subscription activate docker.io/danperry/nocode:1.0.0 tag_update
+tar -xzf ./assets/my-python-app.tar.gz -C /tmp/
 ```
-Output
-```
-✔ Activate subscription
-Key: docker.io/danperry/nocode:1.0.0
-Type: tag_update
-Id: e737986c26126b062de917d36b6eb33c
-Active: true
-```
-Finally, we can list all of our subscriptions to see the state of play.
+
+You'll get `/tmp/my-python-app/` containing `app.py`, `requirements.txt`, and a `README.md`. Take a quick look at `requirements.txt` if you want to know what's in there — Flask, requests, PyYAML, urllib3, Jinja2, cryptography, and Pillow, each pinned to an old release with documented CVEs.
+
+Now point anchorectl at the extracted directory:
+
 ```bash
-anchorectl subscription list
-```
-Output
-```
-✔ Fetched subscriptions
-┌─────────────────────────────────┬─────────────────┬────────┐
-│ KEY                             │ TYPE            │ ACTIVE │
-├─────────────────────────────────┼─────────────────┼────────┤
-│ docker.io/danperry/nocode:1.0.0 │ policy_eval     │ false  │
-│ docker.io/danperry/nocode:1.0.0 │ vuln_update     │ false  │
-│ docker.io/danperry/nocode:1.0.0 │ analysis_update │ true   │
-│ docker.io/danperry/nocode       │ repo_update     │ true   │
-│ docker.io/danperry/nocode:1.0.0 │ alerts          │ true   │
-│ docker.io/danperry/nocode:1.0.0 │ tag_update      │ true   │
-└─────────────────────────────────┴─────────────────┴────────┘
+anchorectl app version asset add filesystem /tmp/my-python-app \
+  --app app \
+  --version v1.0.0 \
+  --asset my-python-app \
+  --type application \
+  --annotations "language=python,role=worker,source=upstream-tarball" \
+  --supplier "Internal CI" \
+  --wait
 ```
 
-Using AnchoreCTL check out the generated events. 
+Output (truncated):
+
+```
+ ✔ Analyzed filesystem asset
+Name: my-python-app
+ID: <job-uuid>
+Type: application
+```
+
+> [!NOTE]
+> **What just happened:** anchorectl walked the directory tree, generated an SBOM client-side from the files it found (including the dependency declarations in `requirements.txt`), and uploaded that SBOM to Enterprise as a new asset. No image was built; nothing was installed; Enterprise never sees the directory contents — just the resulting SBOM. The Python CVEs you'll see in Phase 5 come straight from the version pins in `requirements.txt`.
+
+> [!NOTE]
+> The same `add filesystem` command works against any directory you can point it at — you could use this to scan things like a VM root filesystem, a mounted disk image, an unpacked golden image, a host snapshot, a directory of artifacts pulled from object storage, and so on.
+
+## Phase 5 — Inspect everything you've collected
+
+You now have one application, one version, and four assets attached to it: an imported SBOM (the Java application), two container images — one analyzed centrally (Postgres), one analyzed locally (Ubuntu Jammy) — and a filesystem-derived SBOM (the Python application). Let's look at what's in there.
+
+List all assets under the version:
+
 ```bash
-anchorectl event list
+anchorectl app version asset list v1.0.0 --app app
 ```
 
-Now that we have events being triggered from an enabled subscriptions. We can capture these events and send them as notifications.
-Please review the [Notifications UI Walkthrough](https://docs.anchore.com/current/docs/configuration/notifications/#notifications-ui-walktrough) docs to learn more.
-Watches, Subscriptions and downstream notifications offer many possibilities to build very powerful workflows.
+Output:
 
-### Retrieve your SBOM and content details
+```
+ ✔ Listed assets
+┌────────────────┬─────────────┬──────────────────────┬──────────────────────┐
+│ NAME           │ TYPE        │ CREATED              │ ID                   │
+├────────────────┼─────────────┼──────────────────────┼──────────────────────┤
+│ my-java-app    │ application │ 2026-05-05T10:22:00Z │ <uuid>               │
+│ postgres       │ container   │ 2026-05-05T10:24:11Z │ <uuid>               │
+│ ubuntu-jammy   │ container   │ 2026-05-05T10:26:32Z │ <uuid>               │
+│ my-python-app  │ application │ 2026-05-05T10:28:55Z │ <uuid>               │
+└────────────────┴─────────────┴──────────────────────┴──────────────────────┘
+```
 
-We have all this data about our software now. Let's go into one or two examples on how to visualise some data.
+The `analysis` annotation we set on each container asset (`centralized` vs `distributed`) is preserved on the asset record — drill into either container with `asset get` to confirm:
 
-Let's retrieve ALL types of metadata we can list
 ```bash
-anchorectl image content app:v1.0.0 -a
-✔ Fetched content                           [fetching available types]                                                                                                                                                                               app:v2.0.0
-binary
-conan
-content_search
-dart-pub
-erlang-otp
-files
-gem
-github-action
-github-action-workflow
-go
-hackage
-hex
-java
-linux-kernel
-linux-kernel-module
-lua-rocks
-malware
-npm
-nuget
-opam
-os
-php-composer
-php-pecl
-pod
-python
-r-package
-retrieved_files
-rust-crate
-secret_search
-swift
-swiplpack
-terraform
-wordpress-plugin
+anchorectl app version asset get postgres \
+  --app app --version v1.0.0 -o json
+anchorectl app version asset get ubuntu-jammy \
+  --app app --version v1.0.0 -o json
 ```
 
-Let's retrieve ALL the gem packages and associated metadata
+Pull back the SBOM that was stored for an asset — useful for hand-offs and customer requests. Both ingestion paths (server-side and client-side) leave a queryable SBOM in Enterprise:
+
 ```bash
-anchorectl image content app:v1.0.0 -t go
+anchorectl app version asset sbom get my-java-app \
+  --app app --version v1.0.0 \
+  --file ./my-java-app-sbom-roundtrip.json
 ```
 
-Use AnchoreCTL to export an entire SBOM in SPDX format
+See vulnerabilities aggregated across **every asset** in the version:
+
 ```bash
-anchorectl image sbom app:v1.0.0 -o spdx-json
+anchorectl app version vuln list v1.0.0 --app app
 ```
 
-There is so much data to explore and see here. In the next inspection lab, we cover a few more examples specific to software itself.
+This is the version-level view: deduplicated CVE matches across the imported Java SBOM, the centrally-analyzed Postgres image, the locally-analyzed Ubuntu image, and the Python application's pinned dependencies — all treated as one release. The Inspection module dives deeper into filtering, severity, and fix data.
 
-### Wrap up & one last thing...
+You can even audit the ingestion history for the app by inspecting the jobs created in the previous phases:
 
-So far, we have explored how we can add source and container images and map those to an application and a tag or release. 
-We also explored the many ways to add and query the data around both source and images.
-Now that v2.0.0 has passed ALL the tests, and we are ready to build the image as part of the CD process and deliver the image artifact to our production environment.
-
-Before we wrap up... we noticed one last thing we need to do.
-
-We see that some bespoke packages are not getting discovered by Anchore Enterprise, and we want to add or 'hint' that these exist. 
-Additionally, we have some other associated images that our new application relies on.
-Let's talk through how we can cover both of these asks:
-
-First we can submit the source code for v2.0.0. Then we move onto building an image, and look at the hints process.
 ```bash
-cd ./assets/app:v2.0.0
-anchorectl source add github.com/anchore/webinar-demo@106c2d9fffe01f564d889763d904cace7f32be3f --branch 'v2.0.0' --author 'author-from-ci@example.com' --application 'app@v2.0.0' --workflow-name 'default' --from -
+anchorectl app job list app --status complete
 ```
 
-Anchore Enterprise can use extra data from a hints file. Let's now build our image locally (with the hints file) and tag it as v2.0.0.
+Open the Web UI at `/applications`, find `app`, click into `v1.0.0`, and you'll see all four assets, the package inventory, the vulnerability picture, and the original SBOMs available for download.
+
+## Phase 6 — Update asset metadata
+
+You don't always know everything about an asset at the moment you import it. A vendor hand-off might land before you know the real supplier name; an asset might be classified with the wrong `--type`; a placeholder name might slip in from CI and need cleaning up. `anchorectl app version asset update` lets you change asset metadata — annotations, name, type — in place, without re-scanning or re-importing the underlying SBOM.
+
+### Updating annotations
+
+When we imported the Java SBOM in Phase 2 we used a placeholder annotation `supplier=upstream-vendor`. Imagine the security team has now confirmed the real upstream supplier and wants to capture that for the audit trail. Update the annotations:
+
 ```bash
-cat anchore_hints.json
-docker build . -t app:v2.0.0
+anchorectl app version asset update my-java-app \
+  --app app \
+  --version v1.0.0 \
+  --annotations "supplier=apache-foundation,reviewed-by=security-team,reviewed-on=2026-05-06"
 ```
-You should now see the "added/hinted" packages. (btw this software doesn't exist!)
+
+Output:
+
+```
+ ✔ Update asset
+Name: my-java-app
+ID: <job-uuid>
+Type: application
+```
+
+> [!NOTE]
+> Annotations passed to `update` **merge with the existing set** rather than replacing them outright. To remove a single annotation, set its value to empty: `--annotations "key="` clears that specific annotation but leaves the others alone.
+
+### Renaming an asset
+
+If the asset name no longer fits — perhaps a placeholder slipped in from CI, or the team renamed the component — change it with `--name`:
+
 ```bash
-anchorectl image content app:v2.0.0 -t gem
-✔ Fetched content                           [1 packages] [0 files]                                                                                                                                                                                   app:v2.0.0
-Packages:
-┌─────────┬─────────┬──────┬──────┬──────────┬───────────────────────────────────────────────┐
-│ PACKAGE │ VERSION │ TYPE │ SIZE │ ORIGIN   │ LOCATION                                      │
-├─────────┼─────────┼──────┼──────┼──────────┼───────────────────────────────────────────────┤
-│ wicked  │ 0.6.1   │ GEM  │      │ schneems │ /app/gems/specifications/wicked-0.9.0.gemspec │
-└─────────┴─────────┴──────┴──────┴──────────┴───────────────────────────────────────────────┘
+anchorectl app version asset update my-python-app \
+  --app app \
+  --version v1.0.0 \
+  --name python-worker
 ```
 
-Add version v2.0.0 for our application
+The asset keeps its UUID, its SBOM contents, and its place under `app@v1.0.0` — only the human-facing name changes. Any subsequent commands need to use the new name.
+
+### Reclassifying an asset
+
+If you decide an asset should be tracked under a different `--type` — for example, promoting an entry from `application` to `library` because it turned out to be a reusable component — `update --type` does that without disturbing anything else:
+
 ```bash
-anchorectl application version add app@v2.0.0
+anchorectl app version asset update python-worker \
+  --app app \
+  --version v1.0.0 \
+  --type library
 ```
-Submit our new v2.0.0 image for addition to Anchore Enterprise 
-With `--from docker/registry` AnchoreCTL will perform a 'distributed/local' SBOM-generation and analysis (secret scans, filesystem metadata, and content searches) and upload the results to Anchore Enterprise without ever having that image touched or loaded by your Enterprise deployment.
+
+Confirm the changes landed by listing again:
+
 ```bash
-anchorectl image add app:v2.0.0 --from docker --dockerfile ./Dockerfile
+anchorectl app version asset list v1.0.0 --app app
+anchorectl app version asset get python-worker --app app --version v1.0.0 -o json
 ```
 
-Let's associate this container image to our v2.0.0 of the application in Anchore.
-```bash
-anchorectl application artifact add app@v2.0.0 image $(anchorectl image get app:v2.0.0 -o json | jq -r '.imageDetail[0].imageDigest')
-```
+> [!IMPORTANT]
+> `asset update` is metadata-only. It does **not** replace the SBOM contents, re-trigger analysis, or change the underlying scan results. To re-scan an artifact after a content change, the recommended pattern in 6.0 is to create a new app version (e.g. `v1.0.1`) and re-add the artifact there — each version captures a point-in-time view of its assets, and you can compare versions for drift.
 
-As the tech stack / application evolves we might add new pieces of dependant images like nginx or redis. 
-Additionally, we will very likely add newer versions of our own code application such as commits or continuous integrations of code and eventually release candidates of built container images from a CD pipeline.
-To see how this changes over time, with Anchore Enterprise you can 'index or catalog' each build or release of the software and containers. Let's run through a quick example:
+## Recap
 
-For our app:v2.0.0 application we have a dependency on two other containers nginx and postgres. Let's add these supporting containers to our application construct
-```bash
-anchorectl image add docker.io/library/postgres:13
-anchorectl application artifact add app@v2.0.0 image $(anchorectl image get docker.io/library/postgres:13 -o id)
-anchorectl image add docker.io/nginx:alpine3.18
-anchorectl application artifact add app@v2.0.0 image $(anchorectl image get docker.io/nginx:alpine3.18 -o id)
-```
+You created an application, gave it a version, and attached four assets to that version: an imported SBOM (the Java application hand-off), a centrally-analyzed container (Postgres), a locally-analyzed container (Ubuntu Jammy), and a filesystem-derived SBOM (the Python application). 
 
-Now checkout the artifacts list for the application for v2.0.0 of the app.
-```bash
-anchorectl application artifact list app@v2.0.0
-```
+The 6.0 asset-add commands all live under `app version asset add <type>`:
 
-Finally, you can request an SBOM for the entire application suite for version 2.0.0 with the following command.
-```bash
-anchorectl application sbom app@v2.0.0 > all_the_sboms_appv2.0.0.json
-```
-This is helpful, when for example, a customer asks for a tech stack wide SBOM. You don't need to make individual requests for SBOMs, and instead you can perform one bulk query. 
-Equally, if you need a single SBOM for just one container you can request this too and with application management you can ensure you request the correct one.
+| Asset type            | Command                                              |
+|-----------------------|------------------------------------------------------|
+| Pre-existing SBOM     | `app version asset add sbom SBOM_FILE`              |
+| Container, centralized| `app version asset add container-image-remote IMAGE`|
+| Container, distributed| `app version asset add container-image IMAGE`       |
+| Filesystem / VM       | `app version asset add filesystem DIRECTORY`        |
 
-## Next Lab
+The big shifts from 5.x to remember:
 
-We have seen how both Source and Image SBOMs can be generated and managed by Anchore Enterprise. 
-We also showed how these can be mapped to a construct we call application which helps you maintain provenance and history about your releases and the source and containers associated with them.
-In future labs, we will unpack ways that you can utilize this foundational data to achieve important tasks like compliance, remediation and much more.
+| 5.x                                               | 6.0                                                              |
+|---------------------------------------------------|------------------------------------------------------------------|
+| `image add` then `application artifact add`       | One step: `app version asset add container-image[-remote] …`     |
+| `source add` and `sbom add` were separate flows   | Both go through `app version asset add sbom <file>`              |
+| `--from docker/registry/docker-archive` on image add | Same flag now lives on `add container-image` (distributed)    |
+| Synchronous calls                                 | Job-based; use `--wait` or poll `app job get/list`               |
+| `anchorectl source add` for source-tree SBOMs     | `app version asset add filesystem <dir>` covers source, VMs, hosts |
 
-Next: [Inspection](inspection.md)
+And things that look the same in 6.0 alpha but are still served by v5 underneath: `registry`, `repo`, `subscription`, `event`. They work, but they don't yet integrate with the app/version asset model — bridging that gap is on the roadmap.
+
+## Next Module
+
+Next: [Inspection](inspection.md) — turning all this visibility into actionable security findings.

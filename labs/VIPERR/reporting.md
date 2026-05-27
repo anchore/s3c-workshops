@@ -1,40 +1,273 @@
 # Reporting
 
-Anchore Enterprise Reports aggregates data to provide insightful analytics and metrics for account-wide artifacts.
+By the end of Remediation you've updated the Python application, shipped `v1.0.1`, and the new version now passes policy evaluation cleanly — while `v1.0.0` sits in the catalog as the failed-and-triaged historical record. Reporting is how `v1.0.1` becomes **audit-ready**: the compliance CSV that shows the pass verdict, the CycloneDX VDR for a customer or regulator, the release-level SBOM that travels with the artifact, plus the account-wide dashboards and notification webhooks that keep the security team and oncall engineer informed downstream.
 
-Report out timely information quickly at any step of the development process.
+> [!IMPORTANT]
+> This module assumes you completed the [Visibility](visibility.md), [Inspection](inspection.md), [Policy Enforcement](policy-enforcement.md), and [Remediation](remediation.md) modules. It uses the same `app`, the `v1.0.0` and `v1.0.1` versions, the four assets attached to `v1.0.0`, the Python asset attached to `v1.0.1`, the VEX annotations recorded against `v1.0.0`, and the `viperr-lab-policy` bundle with its log4j allowlist and 14-day grace rule.
 
-You have so far seen all the steps from SBOM generation, inspection and policy enforcement.
-Now armed with some data about our source code / containers we can generate some useful information.
-Below are the top 10 capabilities for how Anchore delivers reporting:
+## How this lab module is structured
 
-1. Provide timely reports in compliance with DoD standards
-2. Include reports that have accurate temporal data
-3. Reports should have relational context
-4. Reporting should be 100% automated
-5. Reports should target accurate artifacts
-6. Reports should reference impacted artifacts
-7. Reports should be provided to every team and developer
-8. Reports should include accurate timestamps
-9. Included Reports in Risk Assessment/Risk Mgmt Process
-10. Regularly update reporting mechanisms for new checks
+Four phases. The first two pull together the per-version exports you've already used into a release workflow; the rest cover the account-wide reporting story plus the push-side notifications that pair with it.
 
-## Lab Exercises
+1. **The 6.0 reporting story** — two layers (per-version exports vs account-wide reports) and when to reach for each.
+2. **Per-version exports across a release line** — the six anchorectl exports (SBOM, vulnerabilities, packages, VEX, policy-compliance, VDR) and which audience each one is shaped for.
+3. **Account-wide reports in the Web UI** — build a "Log4j across the whole account" report from the canonical questions security teams keep asking.
+4. **Subscriptions and notifications** — push-side reporting; tell-me-when state changes on images / repos.
 
-For this lab, we turn to the Web UI to generate reports that will help surface some of the capabilities and information on offer to help you manage your software. 
-Reports can be created and managed in many ways: They can be saved, run on a schedule and made into a template for others to use. 
-Additionally, you can download your report results as JSON or CSV and set up notifications to webhooks to be notified when a report has been generated.
+## Phase 1 — The 6.0 reporting story
 
-> Note: with reporting there is no direct anchorectl support, instead reports are built and managed in the Web UI itself under `/reports` tab in the top navigation.
+Reporting in Anchore Enterprise 6.0 lives at two layers, and the right answer for any given hand-off is usually "use the layer at the right scope."
 
-### Reporting for vulnerability & compliance management
+| Layer | Scope | Surface | Best for |
+|---|---|---|---|
+| **Per-version exports** | One application + one version. | `anchorectl app version export <type> VERSION --app APP` | Release-level hand-offs: "the SBOM/VDR/VEX for v1.0.1", "the compliance report for the audit ticket". |
+| **Account-wide reports** | Every image, asset, and tag in the account. | Web UI under `/reports`. | Cross-cutting questions: "which images use vulnerable Log4j", "show all critical findings across every app". |
 
-Here are some objectives to try yourself:
+> [!NOTE]
+> Account-wide reports in 6.0 alpha are still served by the v5 reports service and key on tags / images rather than the v6 app/version asset model. A v6-native reporting surface is on the roadmap; for now expect the vocabulary mismatch when you move between the per-version CLI and the account-wide UI.
 
-- Run a report to find all images that are using a vulnerable version of Log4j (CVE-2021-45046 or GHSA-7rjr-3q55-vv33).
-- Run a report to show all critical vulnerabilities.
-- Run a report to show which images are failing policy evaluation.
-- Run a runtime report to show issues in a Kubernetes or ECS Namespace/Container.
-- Build a scheduled report that will run daily.
+## Phase 2 — Per-version exports across a release line
 
-Please review the docs for extra details and examples to guide you https://docs.anchore.com/current/docs/vulnerability_management/reports/
+Six per-version exports cover most release-level hand-offs:
+
+| Command | Format | Best for |
+|---|---|---|
+| `app version export sbom VERSION` | CycloneDX JSON (merged across assets) | Release-level SBOM hand-off to customers or downstream tools |
+| `app version export vulnerabilities VERSION` | CSV | Security-team and GRC hand-offs |
+| `app version export packages VERSION` | CSV | Inventory snapshots and diffs across versions |
+| `app version export vex VERSION` | CycloneDX VEX JSON | Internal triage tools and VEX-aware downstream scanners |
+| `app version export policy-compliance VERSION` | CSV | Audit tickets, ship/no-ship reviews |
+| `app version export vdr VERSION` | CycloneDX VDR JSON | Customer / regulator disclosure documents |
+
+Every command shares the same shape: pass the version name, the `--app`, and either `--file <path>` (write to disk) or no flag (stream to stdout). Each export is created as a job, the CLI polls until it's complete, and the resulting download is written out.
+
+The rest of this phase walks the six exports twice. First against `v1.0.0` — the **audit trail of the failed release**: the historical context for *why* you needed the fix and *what* you triaged on the way. Then against `v1.0.1` — the **fixed release you just shipped**, where the same six exports form the evidence package that makes the release audit-ready. The `v1.0.0` trail supports the story; the `v1.0.1` artifacts are the proof of pass.
+
+### SBOM (CycloneDX JSON)
+
+Every asset under the version, merged into one CycloneDX SBOM document. Use this when a customer, an auditor, or a downstream tool wants "the SBOM for this release" rather than the per-asset SBOMs:
+
+```bash
+anchorectl app version export sbom v1.0.0 \
+  --app app \
+  --file ./app-v1.0.0-sbom.cdx.json
+```
+
+> [!NOTE]
+> This is different from `app version asset sbom get`, which returns the original SBOM Anchore Enterprise stored for a single asset, in whatever format you ingested it. `app version export sbom` aggregates the package inventory of every asset under the version and emits a single CycloneDX JSON document — convenient for a release-level hand-off.
+
+### Vulnerability report (CSV)
+
+The canonical "send this to your security team / GRC tool" artifact:
+
+```bash
+anchorectl app version export vulnerabilities v1.0.0 \
+  --app app \
+  --file ./app-v1.0.0-vulnerabilities.csv
+```
+
+### Package inventory (CSV)
+
+Every package across every asset, deduplicated, with location and source attribution:
+
+```bash
+anchorectl app version export packages v1.0.0 \
+  --app app \
+  --file ./app-v1.0.0-packages.csv
+```
+
+### VEX document (CycloneDX VEX)
+
+Every VEX annotation you recorded in Remediation Phase 1 (`not_affected`, `affected`, `under_investigation`), packaged as a CycloneDX VEX document you can hand to a customer, attach to a release, or feed into a downstream scanner:
+
+```bash
+anchorectl app version export vex v1.0.0 \
+  --app app \
+  --file ./app-v1.0.0-vex.cdx.json
+```
+
+The CycloneDX VEX uses the same status / justification vocabulary as `app version vex add`, so a downstream tool that understands CycloneDX VEX will pick up your decisions automatically.
+
+### Compliance report (CSV)
+
+The canonical artifact for an audit, a ticket attachment, or a ship/no-ship review — every finding from the most recent policy evaluation in CSV form:
+
+```bash
+anchorectl app version export policy-compliance v1.0.0 \
+  --app app \
+  --file ./app-v1.0.0-policy-compliance.csv
+```
+
+The CSV has one row per finding with rule, action, vulnerability, package, asset, and fix info — the same data `app version policy findings list` returns, in a format every tool downstream knows how to read.
+
+### VDR — the disclosure report
+
+VDR (Vulnerability Disclosure Report) is the CycloneDX format for "here are the vulnerabilities affecting this release, and the disposition of each." It merges the version-level vulnerability list with any VEX annotations you've recorded, producing one document that downstream consumers — customers, regulators, attestation pipelines — can ingest without separately reconciling SBOM, vuln-list, and VEX files.
+
+```bash
+anchorectl app version export vdr v1.0.0 \
+  --app app \
+  --file ./app-v1.0.0-vdr.cdx.json
+```
+
+The resulting document contains the components (from the merged SBOM), the vulnerabilities affecting each component, and the analysis fields populated from your VEX annotations — `state: not_affected` with the `vulnerable_code_not_in_execute_path` justification for the Jinja2 entry, `state: affected` with the requests upgrade plan, `state: under_investigation` with the supplier-pending statement for log4j.
+
+> [!NOTE]
+> VDR and the VEX-only export (`app version export vex`) overlap but are not the same. **VEX** is just the annotations as a CycloneDX VEX document. **VDR** is the full disclosure: components, vulnerabilities, *and* the VEX disposition attached to each. Give a customer the VDR; give an internal triage tool the VEX file.
+
+### The same six against v1.0.1
+
+`v1.0.1` is what shipped — one upgraded Python asset, no remaining un-waived findings, `Status: pass`. Re-run the same six exports against the new version to produce the clean evidence trail:
+
+```bash
+anchorectl app version export sbom v1.0.1 --app app --file ./app-v1.0.1-sbom.cdx.json
+anchorectl app version export vulnerabilities v1.0.1 --app app --file ./app-v1.0.1-vulnerabilities.csv
+anchorectl app version export packages v1.0.1 --app app --file ./app-v1.0.1-packages.csv
+anchorectl app version export vex v1.0.1 --app app --file ./app-v1.0.1-vex.cdx.json
+anchorectl app version export policy-compliance v1.0.1 --app app --file ./app-v1.0.1-policy-compliance.csv
+anchorectl app version export vdr v1.0.1 --app app --file ./app-v1.0.1-vdr.cdx.json
+```
+
+What changes from v1.0.0's output:
+
+| Export | `v1.0.0` (audit trail) | `v1.0.1` (clean evidence) |
+|---|---|---|
+| SBOM | Four assets merged into one CycloneDX document | The shipped Python asset only — the SBOM that travels with the release |
+| Vulnerabilities | Rich CVE picture across four assets | The un-waived Python CVEs are gone; what's left is dramatically smaller |
+| Packages | Deduplicated inventory across four assets | The shipped Python inventory |
+| VEX | The three annotations recorded in Remediation Phase 1 | **Empty.** VEX is per-version and the `v1.0.0` decisions don't carry forward (per Remediation Phase 3) — and the findings they triaged don't exist in `v1.0.1` anyway |
+| Policy-compliance | One row per un-waived `stop` finding driving the `Status: fail` | **Empty.** The proof that what you shipped passes the same rule book the failed version was measured against |
+| VDR | Disclosure listing vulnerabilities with their VEX dispositions | Clean disclosure — the customer-facing record for the shipped release |
+
+### The audit hand-off
+
+You've updated the Python application, shipped `v1.0.1`, and the new version passes policy evaluation. The **`v1.0.1` evidence package** is what makes the release **audit-ready**:
+
+- `v1.0.1`'s **policy-compliance CSV** (empty) → *the verdict against the rule book is pass.*
+- `v1.0.1`'s **VDR** → *the customer-facing disclosure for the release.*
+- `v1.0.1`'s **SBOM** → *the SBOM that travels with the artifact downstream.*
+- `v1.0.1`'s **vulnerability and package CSVs** → *the full inventory of what's in the release, in formats every audit / GRC tool ingests.*
+
+The `v1.0.0` artifacts (compliance CSV showing the stops, VEX export showing the triage decisions, VDR for the historical record) are the **supporting context** — the audit trail of *why* the fix was needed and *what* you triaged along the way. A reviewer who wants the story has them; a reviewer who just wants the verdict has `v1.0.1`'s evidence on its own. Either way, every artifact is generated against the same policy bundle — the reviewer can re-run the evaluation themselves and arrive at the same verdict. That's what makes the release audit-ready: not *trust us*, but reproducible measurement.
+
+## Phase 3 — Account-wide reports in the Web UI
+
+Per-version exports answer "what about *this* release?" Account-wide reports answer "where across our estate is X true?" — the questions that don't fit cleanly into a single app/version.
+
+The canonical example, straight from the security team's standing list:
+
+> *Which images across our entire account are running a vulnerable version of Log4j?*
+
+Walk through this in the Web UI.
+
+1. **Open the Reports tab.** Navigate to `/reports` in the Web UI. You'll land on the reports list, with any saved reports for this account.
+2. **Create a new report.** Click **New Report**. Anchore Enterprise ships templates for the questions teams ask most often — "Critical Vulnerabilities", "Failed Policy Evaluations", "Vulnerabilities by Tag", "Tags by Vulnerability". Pick **Tags by Vulnerability** (the canonical "which tags contain CVE X?" shape).
+3. **Filter to the question.** Set the vulnerability filter to `CVE-2021-44228` (the log4j Critical from your Java SBOM). Optionally narrow the time window or the registry/repository.
+4. **Run the report.** Anchore Enterprise evaluates the query against every image record in the account. With the v1.0.0 Java SBOM ingested, the Java application asset shows up here — every tag (or asset) that contributes a package matching the CVE.
+5. **Save the report.** Click **Save**. Give it a name (`Tags Affected by CVE-2021-44228`). A saved report can be re-run from the list or shared with the team.
+6. **Download the result.** Reports support JSON and CSV download. CSV is the format your GRC team wants; JSON is the format your scripts want.
+
+The same UI walk-through applies to the other canonical questions:
+
+| Question | Template |
+|---|---|
+| All Critical vulnerabilities across the account | *Vulnerabilities by Tag*, severity = Critical |
+| Images failing policy evaluation | *Failed Policy Evaluations* |
+| Tags newly affected by a given CVE | *Tags by Vulnerability*, with `detected_in_last` |
+| Artifacts (PURLs) affected by a CVE | *Artifacts by Vulnerability* |
+
+## Phase 4 — Subscriptions and notifications
+
+Subscriptions are the **push side of reporting**: instead of asking for a state snapshot on demand, you ask Anchore Enterprise to tell you the moment the state changes — *the policy on this tag just started failing*, *a new CVE was just published against software you ship*, *the supplier just re-pushed the image you're tracking*. The state-change event flows into the same notification plumbing the Web UI uses for any other report event — webhooks, email, GitHub issues, Jira, Slack, MS Teams, SIEM forwarders.
+
+> [!IMPORTANT]
+> In 6.0 alpha, the subscription and event surfaces are still served by the v5 catalog and key on raw image records (registry / repo / tag), not on the app/version asset model. The subscriptions you activate here keep the underlying image record fresh; the v6 asset built on top of that record will reflect the refreshed data the next time you list vulnerabilities or re-run policy evaluation. Bridging subscriptions into the asset model directly is on the roadmap.
+
+### The subscription types
+
+| Type | What it does | Typical use |
+|---|---|---|
+| `tag_update` | New analysis when the same tag is re-pushed. | Catch supply-chain replacements where someone overwrites `:latest` or `:13`. |
+| `vuln_update` | New analysis-pass when feed data changes for a known image. | Catch new CVEs published against software you've already scanned. |
+| `policy_eval` | Re-run policy evaluation when the bound policy or the vulnerability picture changes. | Catch findings that newly cross a `stop` threshold. |
+| `analysis_update` | Notify when an analysis completes. | Drive downstream pipelines that consume SBOMs. |
+
+`tag_update` was already activated against `docker.io/library/postgres:13` in Visibility Phase 3. Add the other two for the same image — those are the ones that close the "state changed → tell me" loop:
+
+```bash
+anchorectl subscription activate docker.io/library/postgres:13 vuln_update
+anchorectl subscription activate docker.io/library/postgres:13 policy_eval
+```
+
+List the active subscriptions to confirm:
+
+```bash
+anchorectl subscription list
+```
+
+Output (truncated):
+
+```
+ ✔ List subscription
+┌──────────────────────────────────┬─────────────────┬────────┐
+│ KEY                              │ TYPE            │ ACTIVE │
+├──────────────────────────────────┼─────────────────┼────────┤
+│ docker.io/library/postgres:13    │ tag_update      │ true   │
+│ docker.io/library/postgres:13    │ vuln_update     │ true   │
+│ docker.io/library/postgres:13    │ policy_eval     │ true   │
+│ docker.io/library/postgres       │ repo_update     │ true   │
+└──────────────────────────────────┴─────────────────┴────────┘
+```
+
+By default Anchore Enterprise runs `vulnerability_scan` every 14400 seconds (4 hours) and `policy_eval` every 3600 seconds (1 hour); both timers are configurable on the deployment side.
+
+### Events and notification endpoints
+
+When a subscription fires it produces an *event*. Events are what get routed to your endpoints. List recent events:
+
+```bash
+anchorectl event list
+```
+
+Endpoints are configured per-deployment. In 6.0 alpha the management surface for those endpoints is the Web UI under `/system/notifications` and the `system_integrations` API — `anchorectl system integration` only supports `list`, `get`, and `delete`. To add a webhook, navigate to **System → Notifications → Endpoints** in the UI and provide the URL, optional auth header, and the subscription types it should receive.
+
+> [!TIP]
+> A common starter setup for a development team:
+>
+> - Critical / KEV → page on-call (PagerDuty webhook).
+> - New `stop` finding on the production version → Slack #security-alerts.
+> - Daily digest of any newly-failing tag → email to the application team.
+>
+> All three are the same Anchore subscription / notification plumbing — only the endpoint routing differs.
+
+### See it in the UI
+
+Open the Web UI at `/events`. Each event has a payload (the same JSON you'd see at the API), a timestamp, and the subscription that produced it. When you attach a webhook, that payload is what it'll deliver.
+
+## Recap
+
+You walked the full reporting surface for the two versions of `app` you built across the lab — `v1.0.0` with its un-waived `Status: fail`, and `v1.0.1` with its clean `Status: pass`:
+
+1. Mapped the **two layers** — per-version exports for release hand-offs, account-wide reports for cross-cutting questions — and the alpha-state mismatch where the account-wide layer is still v5.
+2. Walked the **six per-version exports** — SBOM, vulnerability CSV, package CSV, VEX, policy-compliance CSV, and VDR — and saw which audience each one is shaped for.
+3. Built a **"Log4j across the account" report in the Web UI** using the *Tags by Vulnerability* template and saved it.
+4. Activated `vuln_update` and `policy_eval` **subscriptions** on the Postgres tag and saw where the notification endpoints land in the Web UI.
+
+Useful 5.x → 6.0 mappings:
+
+| 5.x                                                            | 6.0                                                                  |
+|----------------------------------------------------------------|----------------------------------------------------------------------|
+| Web UI `/reports` with templates and saved reports             | Unchanged — same surface, same templates                             |
+| `anchorectl image vulnerabilities <image>`                     | `app version vuln list <version> --app <app>` for per-version (Inspection Phase 2); the Web UI for account-wide |
+| Compliance CSV via UI download                                 | `app version export policy-compliance <version> --app <app>` (introduced in Phase 2)      |
+| SBOM hand-off via per-image download                           | `app version export sbom <version> --app <app>` produces a merged release-level SBOM |
+| Disclosure docs hand-assembled from VEX + vuln list            | `app version export vdr <version> --app <app>` produces a CycloneDX VDR in one shot |
+| `anchorectl subscription activate <image> vuln_update`         | Unchanged — subscriptions are still v5-backed and key on raw images  |
+| Notification endpoint config in `/system/notifications`        | Unchanged — same Web UI surface, same payload shapes                 |
+
+**Where to go from here:**
+
+- For programmatic integration patterns (CI/CD gating using exports, attaching VDR documents to release artifacts), see the [Anchore Enterprise reporting documentation](https://docs.anchore.com/current/docs/vulnerability_management/reports/).
+- For the VIPERR loop end-to-end on a different application: start a fresh `app`, run a release through Visibility → Inspection → Policy Enforcement → Remediation → Reporting, and notice how the same six exports and the same account-wide reports surface the new release alongside `v1.0.0` / `v1.0.1` with no extra plumbing.
+
+That closes the VIPERR lab. You've taken a release from "we have an SBOM" through "we know what's in it", "we have rules about it", "we've updated the app and it now passes evaluation", and finally **"the release is audit-ready and we can prove it to anyone who needs to see it"** — `v1.0.0`'s compliance trail and VEX export as the audit trail of what you triaged, `v1.0.1`'s clean compliance CSV and VDR as the proof of pass for the release, the saved Web UI report for the security team, the webhook for the oncall engineer. The same five-module shape applies to every release that comes after — only the assets change.
