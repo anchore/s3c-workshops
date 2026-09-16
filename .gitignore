@@ -1,3 +1,4 @@
 labs/Deployment/demo-secrets.yaml
 labs/Deployment/license.yaml
 labs/Deployment/docker-config.json
+*.kate-swp
