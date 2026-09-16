@@ -11,7 +11,7 @@ _**The deployment in this tutorial is not production ready, and will receive lim
    2. Alternatively contact sales for a supported [Free Trial](https://go.anchore.com/free-trial/)
 3. Pick a deployment target and deploy Anchore Enterprise.
    1. Deploy using [Docker Compose](./docker-compose/docker-compose.md)
-   2. Deploy using [Kubernetes](./kubernetes.md)
+   2. Deploy using [Kubernetes](./k8s/kubernetes.md)
 4. Install AnchoreCTL the Anchore Enterprise Command Line Interface.
    1. Download & Install [AnchoreCTL](./anchorectl.md)
 5. [Pick a lab](../../README.md#labs) to test your new Deployment and learn more.
