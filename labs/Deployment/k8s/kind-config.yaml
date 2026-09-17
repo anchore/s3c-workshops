@@ -1,0 +1,21 @@
+# Anchore Enterprise chart 4.3.0 declares kubeVersion 1.23.x - 1.36.x, so the node
+# image is pinned. Leaving it unset makes kind use its own default, which is
+# already v1.37.0 and above the chart's supported ceiling -- Helm refuses to
+# install. Re-check the chart's kubeVersion before raising this.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: anchore
+nodes:
+- role: control-plane
+  image: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+- role: worker
+  image: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+  extraPortMappings:
+    - containerPort: 30228
+      hostPort: 8228
+      listenAddress: 127.0.0.1
+      protocol: TCP
+    - containerPort: 30300
+      hostPort: 3000
+      listenAddress: 127.0.0.1
+      protocol: TCP

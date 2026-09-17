@@ -1,6 +1,6 @@
 # Inspection
 
-The Visibility module gave you four assets attached to `app@v1.0.0`: a Java application SBOM, a centrally-analyzed Postgres image, a locally-analyzed Ubuntu image, and a filesystem scan of a Python application. Now we turn that inventory into something actionable — vulnerabilities, packages, prioritisation signals, and triage decisions.
+The Visibility module gave you four assets attached to `app@v1.0.0`: a Java application SBOM, a centrally-analyzed Postgres image, a locally-analyzed Ubuntu image, and a filesystem scan of a Python application. Now we turn that inventory into something actionable — vulnerabilities, packages, prioritization signals, and triage decisions.
 
 In Anchore Enterprise 6.0, vulnerability data is presented at the **app version** level. Anchore Enterprise takes the package inventory from every asset attached to a version, deduplicates it, matches it against vulnerability data, and gives you one consolidated picture for the release. You can still pivot down to a single asset when you need to, but the version-level view is the primary lens.
 
@@ -11,7 +11,7 @@ In Anchore Enterprise 6.0, vulnerability data is presented at the **app version*
 
 Five phases, fully sequential:
 
-1. **Understand the data foundation** — feeds, namespaces, and the enrichment data (KEV, EPSS, CVSS) Anchore Enterprise uses to prioritise findings.
+1. **Understand the data foundation** — feeds, namespaces, and the enrichment data (KEV, EPSS, CVSS) Anchore Enterprise uses to prioritize findings.
 2. **Inspecting contents of assets** — survey the asset roster and drill into per-asset metadata before turning to vulnerabilities.
 3. **List vulnerabilities at the version level** — get the consolidated view across all four assets.
 4. **Filter and prioritise** — use `jq` against the JSON output to slice by severity, fix availability, KEV, and EPSS.
