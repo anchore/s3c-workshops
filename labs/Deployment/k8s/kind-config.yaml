@@ -1,7 +1,3 @@
-# Anchore Enterprise chart 4.3.0 declares kubeVersion 1.23.x - 1.36.x, so the node
-# image is pinned. Leaving it unset makes kind use its own default, which is
-# already v1.37.0 and above the chart's supported ceiling -- Helm refuses to
-# install. Re-check the chart's kubeVersion before raising this.
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 name: anchore

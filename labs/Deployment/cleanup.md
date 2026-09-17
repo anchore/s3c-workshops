@@ -12,12 +12,12 @@ rm ~/.local/bin/anchorectl
 ```
 **Compose**
 ```bash
-docker compose -f anchore-compose.yaml down
+docker compose down
 ```
 **Kubernetes**
 ```bash
 # Uninstall Anchore from your existing cluster
-helm uninstall anchore
+helm uninstall anchore -n anchore
 
 # Remove your local Kind cluster entirely if desired
 kind delete cluster --name anchore

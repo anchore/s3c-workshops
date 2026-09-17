@@ -32,7 +32,7 @@ Six per-version exports cover most release-level hand-offs:
 
 | Command | Format | Best for |
 |---|---|---|
-| `app version export sbom VERSION` | CycloneDX JSON (merged across assets) | Release-level SBOM hand-off to customers or downstream tools |
+| `app version export sbom-cyclonedx-1 VERSION` | CycloneDX JSON (merged across assets) | Release-level SBOM hand-off to customers or downstream tools |
 | `app version export vulnerabilities VERSION` | CSV | Security-team and GRC hand-offs |
 | `app version export packages VERSION` | CSV | Inventory snapshots and diffs across versions |
 | `app version export vex VERSION` | CycloneDX VEX JSON | Internal triage tools and VEX-aware downstream scanners |
@@ -48,13 +48,13 @@ The rest of this phase walks the six exports twice. First against `v1.0.0` — t
 Every asset under the version, merged into one CycloneDX SBOM document. Use this when a customer, an auditor, or a downstream tool wants "the SBOM for this release" rather than the per-asset SBOMs:
 
 ```bash
-anchorectl app version export sbom v1.0.0 \
+anchorectl app version export sbom-cyclonedx-1 v1.0.0 \
   --app app \
   --file ./app-v1.0.0-sbom.cdx.json
 ```
 
 > [!NOTE]
-> This is different from `app version asset sbom get`, which returns the original SBOM Anchore Enterprise stored for a single asset, in whatever format you ingested it. `app version export sbom` aggregates the package inventory of every asset under the version and emits a single CycloneDX JSON document — convenient for a release-level hand-off.
+> This is different from `app version asset sbom get`, which returns the original SBOM Anchore Enterprise stored for a single asset, in whatever format you ingested it. `app version export sbom-cyclonedx-1` aggregates the package inventory of every asset under the version and emits a single CycloneDX JSON document — convenient for a release-level hand-off.
 
 ### Vulnerability report (CSV)
 
@@ -120,7 +120,7 @@ The resulting document contains the components (from the merged SBOM), the vulne
 `v1.0.1` is what shipped — one upgraded Python asset, no remaining un-waived findings, `Status: pass`. Re-run the same six exports against the new version to produce the clean evidence trail:
 
 ```bash
-anchorectl app version export sbom v1.0.1 --app app --file ./app-v1.0.1-sbom.cdx.json
+anchorectl app version export sbom-cyclonedx-1 v1.0.1 --app app --file ./app-v1.0.1-sbom.cdx.json
 anchorectl app version export vulnerabilities v1.0.1 --app app --file ./app-v1.0.1-vulnerabilities.csv
 anchorectl app version export packages v1.0.1 --app app --file ./app-v1.0.1-packages.csv
 anchorectl app version export vex v1.0.1 --app app --file ./app-v1.0.1-vex.cdx.json
@@ -260,7 +260,7 @@ Useful 5.x → 6.0 mappings:
 | Web UI `/reports` with templates and saved reports             | Unchanged — same surface, same templates                             |
 | `anchorectl image vulnerabilities <image>`                     | `app version vuln list <version> --app <app>` for per-version (Inspection Phase 2); the Web UI for account-wide |
 | Compliance CSV via UI download                                 | `app version export policy-compliance <version> --app <app>` (introduced in Phase 2)      |
-| SBOM hand-off via per-image download                           | `app version export sbom <version> --app <app>` produces a merged release-level SBOM |
+| SBOM hand-off via per-image download                           | `app version export sbom-cyclonedx-1 <version> --app <app>` produces a merged release-level SBOM |
 | Disclosure docs hand-assembled from VEX + vuln list            | `app version export vdr <version> --app <app>` produces a CycloneDX VDR in one shot |
 | `anchorectl subscription activate <image> vuln_update`         | Unchanged — subscriptions are still v5-backed and key on raw images  |
 | Notification endpoint config in `/system/notifications`        | Unchanged — same Web UI surface, same payload shapes                 |

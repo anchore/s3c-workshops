@@ -3,7 +3,7 @@
 ## Requirements
 - [Helm](https://helm.sh/) >=3.8
 - [Docker](https://docs.docker.com/engine/install/) >=29.0
-- [Kubernetes](https://kubernetes.io/) 1.23 - 1.36 (chart 4.3.0 `kubeVersion` ceiling; the pinned kind image satisfies this)
+- [Kubernetes](https://kubernetes.io/) 1.23 - 1.36 
 - [Kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) >=1.35
 - [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installing-with-a-package-manager) (recommended)
 
@@ -37,8 +37,9 @@ Place your *license.yaml* file into this directory (`./labs/Deployment/k8s`).
 
 Store your License, DockerHub and Anchore Credentials as Kubernetes Secrets. These will be used by your Anchore Deployment.  
 
-Be sure to change _your-docker-username_ and _your-docker-password_ to those you were supplied by the Google Form.
->_The PostgreSQL image used here is private, so these credentials must exist before the database is created._
+> [!IMPORTANT]
+> Be sure to change _your-docker-username_ and _your-docker-password_ to your supplied credentials.
+> The PostgreSQL image used here is private, so these credentials must exist before the database is created.
 ```bash
 kubectl create secret generic anchore-enterprise-license \
 --from-file=license.yaml=./license.yaml -n anchore
