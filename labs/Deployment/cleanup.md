@@ -11,8 +11,15 @@ If you need to spin down resources, please review the relevant steps below.
 rm ~/.local/bin/anchorectl
 ```
 **Compose**
+
+Run these from the directory containing `docker-compose.yaml`.
 ```bash
+# Stop and remove the containers, keeping your database
 docker compose down
+
+# Or, for a total cleanup, also delete the anchore-enterprise-db volume.
+# This permanently removes all analysis data, policies and accounts.
+docker compose down -v
 ```
 **Kubernetes**
 ```bash
@@ -22,6 +29,3 @@ helm uninstall anchore -n anchore
 # Remove your local Kind cluster entirely if desired
 kind delete cluster --name anchore
 ```
-## Next Step
-
-Please come back to learn more. There are more labs coming.
