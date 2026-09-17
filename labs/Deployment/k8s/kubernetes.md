@@ -93,6 +93,24 @@ Access the Anchore Enterprise Web UI by visiting http://localhost:3000/ and use 
 - username: `admin`
 - password: `anchore12345`
 
+## Pausing the cluster
+
+If you want to stop for the day and pick this up later, you don't need to tear the
+cluster down and redeploy. Stop the Kind node containers — your deployment,
+database contents and published ports are all preserved.
+```bash
+docker stop $(kind get nodes --name anchore | tr '\n' ' ')
+```
+
+Start them again when you want to carry on, and allow about a minute for every
+service to report ready.
+```bash
+docker start $(kind get nodes --name anchore | tr '\n' ' ')
+```
+
+When you are finished with the lab entirely, [cleanup](../cleanup.md) covers
+tearing everything down.
+
 ## Next Step
 
-Now that you have Anchore Enterprise operational, [proceed to the next step](./README.md) of the lab.
+Now that you have Anchore Enterprise operational, [proceed to the next step](../README.md) of the lab.

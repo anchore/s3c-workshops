@@ -12,7 +12,7 @@ Place your *license.yaml* file into the directory with docker-compose.yaml
 
 Login to DockerHub with access credentials for the Anchore Enterprise images.
 ```bash
-docker login --username <your-docker-username>
+docker login --username your-docker-username
 ```
 Run docker compose and spin up Anchore Enterprise
 
@@ -22,7 +22,7 @@ docker compose up -d
 
 Access the Anchore Enterprise Web UI by visiting http://localhost:3000/ and use the following credentials to login:
 - username: `admin`
-- password: `anchore12345` (or your password set in *.env*)
+- password: `anchore12345`
 
 ## Next Step
 
