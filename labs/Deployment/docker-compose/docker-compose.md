@@ -24,6 +24,24 @@ Access the Anchore Enterprise Web UI by visiting http://localhost:3000/ and use 
 - username: `admin`
 - password: `anchore12345`
 
+## Pausing the deployment
+
+If you want to stop for the day and pick this up later, you don't need to tear the
+deployment down and start over. Stop the containers — they and your database
+contents are preserved.
+```bash
+docker compose stop
+```
+
+Start them again when you want to carry on, and allow a moment for every service
+to become healthy.
+```bash
+docker compose start
+```
+
+When you are finished with the lab entirely, [cleanup](../cleanup.md) covers
+tearing everything down.
+
 ## Next Step
 
 Now that you have Anchore Enterprise operational, [proceed to the next step](../README.md) of the lab.

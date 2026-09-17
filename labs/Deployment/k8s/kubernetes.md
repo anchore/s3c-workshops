@@ -95,9 +95,8 @@ Access the Anchore Enterprise Web UI by visiting http://localhost:3000/ and use 
 
 ## Pausing the cluster
 
-If you want to stop for the day and pick this up later, you don't need to tear the
-cluster down and redeploy. Stop the Kind node containers — your deployment,
-database contents and published ports are all preserved.
+If you want to stop for the day and pick this up later, you don't need to tear the cluster down and redeploy.  
+Stop the Kind node containers — your deployment, database contents and published ports are all preserved.
 ```bash
 docker stop $(kind get nodes --name anchore | tr '\n' ' ')
 ```
@@ -108,8 +107,7 @@ service to report ready.
 docker start $(kind get nodes --name anchore | tr '\n' ' ')
 ```
 
-When you are finished with the lab entirely, [cleanup](../cleanup.md) covers
-tearing everything down.
+When you are finished with the lab entirely, [cleanup](../cleanup.md) covers tearing everything down.
 
 ## Next Step
 
