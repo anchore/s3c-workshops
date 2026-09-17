@@ -7,7 +7,8 @@ If you need to spin down resources, please review the relevant steps below.
 
 **AnchoreCTL**
 ```bash
-sudo rm /usr/local/bin/anchorectl
+# Simply remove anchorectl binary from where you installed it.
+rm ~/.local/bin/anchorectl
 ```
 **Compose**
 ```bash
@@ -15,13 +16,12 @@ docker compose -f anchore-compose.yaml down
 ```
 **Kubernetes**
 ```bash
+# Uninstall Anchore from your existing cluster
 helm uninstall anchore
-```
-**AWS Free Trial**
-```bash
-Please follow the instructions you have received via email.
-```
 
+# Remove your local Kind cluster entirely if desired
+kind delete cluster --name anchore
+```
 ## Next Step
 
 Please come back to learn more. There are more labs coming.

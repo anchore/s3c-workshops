@@ -1,0 +1,38 @@
+useExistingSecrets: true
+existingSecretName: anchore-enterprise-env
+
+# Expose the API and UI as NodePorts. The kind cluster (see kind-config.yaml)
+# publishes these on the host as localhost:8228 and localhost:3000.
+api:
+  service:
+    type: NodePort
+    nodePort: 30228
+ui:
+  service:
+    type: NodePort
+    nodePort: 30300
+
+# Anchore Enterprise 6 requires an external PostgreSQL 17+ with pg_cron; the
+# bundled PostgreSQL subchart was removed in chart 4.0.0. See cnpg-cluster.yaml.
+postgresql:
+  externalEndpoint: anchore-db-rw
+  auth:
+    username: anchore
+    password: "anchore-postgres,123"
+    database: anchore
+
+anchoreConfig:
+  policy_engine:
+    vulnerabilities:
+      matching:
+        exclude:
+          providers: []
+          package_types: []
+  analyzer:
+    layer_cache_max_gigabytes: 5
+    enable_hints: true
+    configFile:
+      malware:
+        clamav:
+          enabled: true
+          db_update_enabled: true

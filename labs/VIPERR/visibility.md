@@ -2,7 +2,7 @@
 
 Anchore Enterprise generates and stores detailed SBOMs at every stage of the SDLC, giving you a complete inventory of the software components in your applications — from OS packages and files to direct and transitive dependencies in your language ecosystems. These SBOMs feed every other capability in the platform: vulnerability matching, policy compliance, VEX, and reporting.
 
-In Enterprise 6.0 this data is organised around three concepts:
+In Enterprise 6.0 this data is organized around three concepts:
 
 - **Application** — a logical product or service you ship.
 - **Application Version** — a specific release or build of that application (`v1.0.0`, `2026-Q2-rc1`, `HEAD`, …).

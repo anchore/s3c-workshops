@@ -2,104 +2,91 @@
 
 ## Requirements
 - [Helm](https://helm.sh/) >=3.8
-- [Kubernetes](https://kubernetes.io/) >=1.23
-- [Kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) installed and configured to your Anchore Enterprise cluster
+- [Docker](https://docs.docker.com/engine/install/) >=29.0
+- [Kubernetes](https://kubernetes.io/) 1.23 - 1.36 (chart 4.3.0 `kubeVersion` ceiling; the pinned kind image satisfies this)
+- [Kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) >=1.35
 - [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installing-with-a-package-manager) (recommended)
 
 ## Setup
 
-Create a Kubernetes Cluster to deploy Anchore Enterprise. In this example I use [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installing-with-a-package-manager), but feel free to use your own.
+Create a Kubernetes Cluster to deploy Anchore Enterprise. This example uses [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installing-with-a-package-manager), but feel free to use your own.
 
 ```bash
-cat <<EOF | kind create cluster --config=-
-kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4
-name: anchore
-nodes:
-- role: control-plane
-  image: kindest/node:v1.31.6@sha256:28b7cbb993dfe093c76641a0c95807637213c9109b761f1d422c2400e22b8e87
-- role: worker
-  image: kindest/node:v1.31.6@sha256:28b7cbb993dfe093c76641a0c95807637213c9109b761f1d422c2400e22b8e87
-  extraPortMappings:
-    - containerPort: 443
-      hostPort: 443
-      listenAddress: 127.0.0.1 
-      protocol: TCP
-EOF
+cd ./labs/Deployment/k8s
+kind create cluster --config kind-config.yaml
 ```
 
 Ensure kubectl is installed and pointing to your cluster.
 ```bash
 kubectl cluster-info --context kind-anchore
 ```
+
+Your cluster info should look something like this. Port number will likely differ. 
 ```
-Kubernetes control plane is running at https://127.0.0.1:51735
-CoreDNS is running at https://127.0.0.1:51735/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
+Kubernetes control plane is running at https://127.0.0.1:46087
+CoreDNS is running at https://127.0.0.1:46087/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
 ```
 
-Create a K8s namespace, which will be used to deploy Anchore Enterprise.
+Create a namespace where Anchore Enterprise will be deployed.
 ```bash
 kubectl create namespace anchore
+kubectl config set-context --current --namespace=anchore
 ```
-Store your License, DockerHub and Anchore Credentials as Kubernetes Secrets. These will be used by your Anchore Deployment.
-_Be sure to change <your-docker-username> and <your-docker-password> to those you were supplied by the google form._
-```bash
-cd ./labs/Deployment
 
+Place your *license.yaml* file into this directory (`./labs/Deployment/k8s`).
+
+Store your License, DockerHub and Anchore Credentials as Kubernetes Secrets. These will be used by your Anchore Deployment.  
+
+Be sure to change _your-docker-username_ and _your-docker-password_ to those you were supplied by the Google Form.
+>_The PostgreSQL image used here is private, so these credentials must exist before the database is created._
+```bash
 kubectl create secret generic anchore-enterprise-license \
 --from-file=license.yaml=./license.yaml -n anchore
 
 kubectl create secret docker-registry anchore-enterprise-pullcreds \
---docker-server=docker.io --docker-username=<your-docker-username> --docker-password=<your-docker-password> -n anchore
+--docker-server=docker.io \
+--docker-username=your-docker-username \
+--docker-password=your-docker-password -n anchore
 
 kubectl create secret generic anchore-enterprise-env \
---from-literal=ANCHORE_DB_HOST=anchore-postgresql --from-literal=ANCHORE_DB_NAME=anchore \
+--from-literal=ANCHORE_DB_HOST=anchore-db-rw --from-literal=ANCHORE_DB_NAME=anchore \
 --from-literal=ANCHORE_DB_USER=anchore --from-literal=ANCHORE_DB_PORT=5432 \
 --from-literal=ANCHORE_DB_PASSWORD=anchore-postgres,123 --from-literal=ANCHORE_ADMIN_PASSWORD=anchore12345 -n anchore
 
 kubectl create secret generic anchore-enterprise-ui-env \
---from-literal=ANCHORE_APPDB_URI=postgres://anchore:anchore-postgres,123@anchore-postgresql:5432/anchore \
+--from-literal=ANCHORE_APPDB_URI=postgres://anchore:anchore-postgres,123@anchore-db-rw:5432/anchore \
 --from-literal=ANCHORE_REDIS_URI=redis://:anchore-redis,123@anchore-ui-redis-master:6379 -n anchore
 ```
 
-Run Helm install to spin up Anchore Enterprise (5.24.1)
+Anchore Enterprise 6 requires PostgreSQL 17 or above with the `pg_cron` extension.
+The Helm chart no longer bundles a database, so deploy one with the [CloudNativePG](https://cloudnative-pg.io/) operator.
+
+Install the CNPG operator.
+```bash
+helm repo add cnpg https://cloudnative-pg.github.io/charts
+helm upgrade --install cnpg cnpg/cloudnative-pg --namespace cnpg-system --create-namespace --wait
+```
+
+Create the PostgreSQL cluster and wait for it to come up.
+```bash
+kubectl apply -f cnpg-cluster.yaml
+kubectl wait --for=condition=Ready cluster/anchore-db -n anchore --timeout=600s
+```
+
+Run Helm install to spin up Anchore Enterprise (6.2.0)
 ```bash
 helm repo add anchore https://charts.anchore.io
-helm upgrade --install --namespace anchore anchore anchore/enterprise --version 3.20.3 -f - <<EOF
-  useExistingSecrets: true
-  existingSecretName: anchore-enterprise-env
-
-  postgresql:
-    chartEnabled: true
-    externalEndpoint: "anchore-postgresql"
-  anchoreConfig:
-    policy_engine:
-      vulnerabilities:
-        matching:
-          exclude:
-            providers: []
-            package_types: []
-    analyzer:
-      layer_cache_max_gigabytes: 5
-      enable_hints: true
-      configFile:
-        malware:
-          clamav:
-            enabled: true
-            db_update_enabled: true
-EOF
+helm upgrade --install --namespace anchore anchore anchore/enterprise --version 4.2.0 -f anchore-values.yaml
 ```
 
-Run port forwarding to get access to the Anchore Enterprise Web UI.
+Wait for the deployment to become ready.
 ```bash
-kubectl port-forward svc/anchore-enterprise-ui -n anchore 3000:80
-```
-Run port forwarding to get access to the Anchore Enterprise API.
-```bash
-kubectl port-forward svc/anchore-enterprise-api -n anchore 8228:8228
+kubectl wait --for=condition=available --timeout=600s deployment --all -n anchore
 ```
 
-_Keep these port-forward commands running as you use Anchore Enterprise and AnchoreCTL/APIs_
+The kind cluster publishes the API and UI on your host, so no port-forwarding is
+required and nothing needs to be left running. The API is available at
+http://localhost:8228/v2/.
 
 Access the Anchore Enterprise Web UI by visiting http://localhost:3000/ and use the following credentials to login:
 - username: `admin`
