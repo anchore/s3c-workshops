@@ -17,13 +17,15 @@ metadata:
 spec:
   instances: 1
   description: "PostgreSQL 17 with pg_cron for Anchore Enterprise, managed by CloudNativePG"
-  # Multi-arch (amd64/arm64) PostgreSQL 17 image with the pg_cron extension built
-  # in. No public CloudNativePG image ships pg_cron, so this Anchore-built image
-  # is required. It is private, and reuses the same pull secret as the Anchore
-  # Enterprise images -- so that secret must exist before this manifest is applied.
-  imageName: docker.io/anchore/anchore-charts-testing:17-pg-cron
+  # PostgreSQL 17 with the pg_cron extension built in. No public CloudNativePG
+  # image ships pg_cron, so this Anchore-built image is required. It is private
+  # and reuses the same pull secret as the Anchore Enterprise images -- so that
+  # secret must exist before this manifest is applied. Note: amd64 only.
+  imageName: docker.io/anchore/postgres-cron:17
   imagePullSecrets:
     - name: anchore-enterprise-pullcreds
+  postgresUID: 999
+  postgresGID: 999
   bootstrap:
     initdb:
       database: anchore
@@ -46,8 +48,5 @@ spec:
       cron.use_background_workers: "on"
       max_worker_processes: "20"
       max_connections: "2000"
-
-  # No storageClass set, so the cluster's default is used (kind provides
-  # "standard"). Sized for a workshop; production deployments want 100Gi+.
   storage:
     size: 10Gi

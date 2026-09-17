@@ -13,7 +13,7 @@ Place your *license.yaml* file into the directory with docker-compose.yaml
 Login to DockerHub with access credentials for the Anchore Enterprise images.
 ```bash
 docker login --username <your-docker-username>
-
+```
 Run docker compose and spin up Anchore Enterprise
 
 ```bash
