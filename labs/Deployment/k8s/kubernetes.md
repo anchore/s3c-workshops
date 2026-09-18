@@ -3,7 +3,7 @@
 ## Requirements
 - [Helm](https://helm.sh/) >=3.8
 - [Docker](https://docs.docker.com/engine/install/) >=29.0
-- [Kubernetes](https://kubernetes.io/) 1.23 - 1.36 
+- [Kubernetes](https://kubernetes.io/) 1.23 - 1.37 
 - [Kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) >=1.35
 - [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installing-with-a-package-manager) (recommended)
 
@@ -77,7 +77,7 @@ kubectl wait --for=condition=Ready cluster/anchore-db -n anchore --timeout=600s
 Run Helm install to spin up Anchore Enterprise (6.2.0)
 ```bash
 helm repo add anchore https://charts.anchore.io
-helm upgrade --install --namespace anchore anchore anchore/enterprise --version 4.2.0 -f anchore-values.yaml
+helm upgrade --install --namespace anchore anchore anchore/enterprise --version 4.3.1 -f anchore-values.yaml
 ```
 
 Wait for the deployment to become ready.
