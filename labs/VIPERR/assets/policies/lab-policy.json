@@ -1,0 +1,63 @@
+{
+  "id": "viperr-lab-policy",
+  "name": "VIPERR Lab Policy",
+  "version": "2",
+  "description": "Stop on any Critical vulnerability, stop on any CISA KEV match, warn on High vulnerabilities that already have a fix available.",
+  "rule_sets": [
+    {
+      "id": "d3a1d27b-28f4-4f9d-afe9-8fe1ab89f5ed",
+      "name": "vulnerability rules",
+      "description": "",
+      "version": "2",
+      "artifact_type": "sbom",
+      "rules": [
+        {
+          "id": "17ed63bd-6133-4048-a647-a1586e52f918",
+          "gate": "vulnerabilities",
+          "trigger": "package",
+          "action": "STOP",
+          "description": "",
+          "params": [
+            {
+              "name": "known_exploited_vulnerability",
+              "value": "true"
+            },
+            {
+              "name": "package_type",
+              "value": "all"
+            }
+          ],
+          "recommendation": ""
+        },
+        {
+          "id": "d7b4a6af-107f-4b6d-be00-bb06e26b2350",
+          "gate": "vulnerabilities",
+          "trigger": "package",
+          "action": "STOP",
+          "description": "",
+          "params": [
+            {
+              "name": "package_type",
+              "value": "all"
+            },
+            {
+              "name": "severity",
+              "value": "high"
+            },
+            {
+              "name": "severity_comparison",
+              "value": ">="
+            }
+          ],
+          "recommendation": ""
+        }
+      ]
+    }
+  ],
+  "allowlists": [],
+  "mappings": [],
+  "source_mappings": [],
+  "allowlisted_images": [],
+  "denylisted_images": [],
+  "sbom_mappings": []
+}

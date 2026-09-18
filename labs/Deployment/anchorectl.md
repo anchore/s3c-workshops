@@ -1,31 +1,17 @@
 # AnchoreCTL
 
-AnchoreCTL is a tool used to interact with Anchore Enterprise across many scenarios and use cases. AnchoreCTL will be required for most labs.
+AnchoreCTL is a CLI tool used to interact with Anchore Enterprise across many scenarios and use cases. AnchoreCTL will be required for most labs.
 
-_If you have chosen the AWS Anchore Free Trial route, the AnchoreCTL has [already been installed and configured](https://sites.google.com/anchore.com/anchore-enterprise-trial#h.g74u7lejv5m1) for you. Otherwise, please continue with the following steps:_
+See the official [AnchoreCTL Deployment page](https://docs.anchore.com/current/docs/deployment/anchorectl/) for instructions on how to download and install AnchoreCTL.
 
-Download and install the AnchoreCTL
-```bash
-curl -sSfL  https://anchorectl-releases.anchore.io/anchorectl/install.sh  | sh -s -- -b <DESTINATION_DIR> v5.17.0
-```
+After AnchoreCTL is installed, see the [AnchoreCTL Configuration page](https://docs.anchore.com/current/docs/configuration/anchorectl/). Configure your AnchoreCTL to connect to the Anchore Enterprise instance that you deployed.
 
-Test your access to the Anchore Enterprise API. This is used by AnchoreCTL
-```bash
-open http://localhost:8228/v2/
-```
-you should get the following output:
-```
-"v2"
-```
-_Any issues you might need to check your networking configuration and/or run port forwarding._
-
-Create the AnchoreCTL environment variables to point to your deployment
+Create the AnchoreCTL environment variables to point to your deployment:
 ```bash
 export ANCHORECTL_URL="http://localhost:8228"
 export ANCHORECTL_USERNAME="admin"
 export ANCHORECTL_PASSWORD="anchore12345" 
 ```
-_You can permanently install and configure `anchorectl` removing the need for setting environment variables, see [Installing AnchoreCTL](https://docs.anchore.com/current/docs/deployment/anchorectl/)._
 
 Test your AnchoreCTL and Anchore Enterprise deployment
 ```bash
@@ -33,20 +19,21 @@ anchorectl system status
 ```
 Your output should look something like the following with 'available' for all rows:
 ```
- ✔ Status system                                                                                                                                                                                                                                  
-┌────────────────┬───────────────────────────────────────────────────┬────────────────────────────────────────────────────────────────────────┬──────┬────────────────┬────────────┬──────────────┐
-│ SERVICE        │ HOST ID                                           │ URL                                                                    │ UP   │ STATUS MESSAGE │ DB VERSION │ CODE VERSION │
-├────────────────┼───────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────┼──────┼────────────────┼────────────┼──────────────┤
-│ analyzer       │ anchore-enterprise-analyzer-5577b69bb7-bpvnw      │ http://anchore-enterprise-analyzer.anchore.svc.cluster.local:8084      │ true │ available      │ 5170       │ 5.17.0       │
-│ notifications  │ anchore-enterprise-notifications-55c66f7c88-82k4t │ http://anchore-enterprise-notifications.anchore.svc.cluster.local:8668 │ true │ available      │ 5170       │ 5.17.0       │
-│ simplequeue    │ anchore-enterprise-simplequeue-5c5b46466c-xq6kq   │ http://anchore-enterprise-simplequeue.anchore.svc.cluster.local:8083   │ true │ available      │ 5170       │ 5.17.0       │
-│ reports_worker │ anchore-enterprise-reportsworker-6fb4f55455-gggtf │ http://anchore-enterprise-reportsworker.anchore.svc.cluster.local:8559 │ true │ available      │ 5170       │ 5.17.0       │
-│ apiext         │ anchore-enterprise-api-5ccff5fdd-gcwkh            │ http://anchore-enterprise-api.anchore.svc.cluster.local:8228           │ true │ available      │ 5170       │ 5.17.0       │
-│ policy_engine  │ anchore-enterprise-policy-8d4bb4c45-7lc9r         │ http://anchore-enterprise-policy.anchore.svc.cluster.local:8087        │ true │ available      │ 5170       │ 5.17.0       │
-│ catalog        │ anchore-enterprise-catalog-86c6978bbf-89hg7       │ http://anchore-enterprise-catalog.anchore.svc.cluster.local:8082       │ true │ available      │ 5170       │ 5.17.0       │
-│ data_syncer    │ anchore-enterprise-datasyncer-64f7f7fcb9-m5tkf    │ http://anchore-enterprise-datasyncer.anchore.svc.cluster.local:8778    │ true │ available      │ 5170       │ 5.17.0       │
-│ reports        │ anchore-enterprise-reports-7b6497fffc-msd7x       │ http://anchore-enterprise-reports.anchore.svc.cluster.local:8558       │ true │ available      │ 5170       │ 5.17.0       │
-└────────────────┴───────────────────────────────────────────────────┴────────────────────────────────────────────────────────────────────────┴──────┴────────────────┴────────────┴──────────────┘
+✔ Status system                                                                                                                                                                                                                                                                        
+┌───────────────────┬──────────────────────────────────────────────────────┬───────────────────────────────────────────────────────────────────────────┬──────┬────────────────┬────────────┬──────────────┐
+│ SERVICE           │ HOST ID                                              │ URL                                                                       │ UP   │ STATUS MESSAGE │ DB VERSION │ CODE VERSION │
+├───────────────────┼──────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────┼──────┼────────────────┼────────────┼──────────────┤
+│ catalog           │ anchore-enterprise-catalog-5b977d5574-hnmxg          │ http://anchore-enterprise-catalog.anchore.svc.cluster.local:8082          │ true │ available      │ 6020       │ 6.2.0        │
+│ simplequeue       │ anchore-enterprise-simplequeue-776765d464-pghd5      │ http://anchore-enterprise-simplequeue.anchore.svc.cluster.local:8083      │ true │ available      │ 6020       │ 6.2.0        │
+│ notifications     │ anchore-enterprise-notifications-6796588b9c-vkcr8    │ http://anchore-enterprise-notifications.anchore.svc.cluster.local:8668    │ true │ available      │ 6020       │ 6.2.0        │
+│ reports           │ anchore-enterprise-reports-6f799cc6f4-x9gvm          │ http://anchore-enterprise-reports.anchore.svc.cluster.local:8558          │ true │ available      │ 6020       │ 6.2.0        │
+│ reports_worker    │ anchore-enterprise-reportsworker-5f4b864f8f-jsp68    │ http://anchore-enterprise-reportsworker.anchore.svc.cluster.local:8559    │ true │ available      │ 6020       │ 6.2.0        │
+│ data_syncer       │ anchore-enterprise-datasyncer-888c9b764-gc44v        │ http://anchore-enterprise-datasyncer.anchore.svc.cluster.local:8778       │ true │ available      │ 6020       │ 6.2.0        │
+│ analyzer          │ anchore-enterprise-analyzer-54d4fd6f65-7v2bv         │ http://anchore-enterprise-analyzer.anchore.svc.cluster.local:8084         │ true │ available      │ 6020       │ 6.2.0        │
+│ policy_engine     │ anchore-enterprise-policy-58c74dddd4-qjx86           │ http://anchore-enterprise-policy.anchore.svc.cluster.local:8087           │ true │ available      │ 6020       │ 6.2.0        │
+│ component_catalog │ anchore-enterprise-componentcatalog-75db5f797f-t8prb │ http://anchore-enterprise-componentcatalog.anchore.svc.cluster.local:8228 │ true │ available      │ 6020       │ 6.2.0        │
+│ apiext            │ anchore-enterprise-api-58df798dfd-pz52h              │ http://anchore-enterprise-api.anchore.svc.cluster.local:8228              │ true │ available      │ 6020       │ 6.2.0        │
+└───────────────────┴──────────────────────────────────────────────────────┴───────────────────────────────────────────────────────────────────────────┴──────┴────────────────┴────────────┴──────────────┘
 ```
 
 ## Next Step

@@ -1,0 +1,455 @@
+# All-in-one docker compose deployment of a full anchore-enterprise service system
+#
+# Every ${VARIABLE} below is defined in the .env file next to this one.
+# Edit .env to change image versions, the database password, metrics, and the
+# optional admin/auth/encryption secrets. There is nothing to change in here.
+---
+name: "anchore-6020"
+
+volumes:
+  # Since this is for a quickstart, each minor version has its own db, to use a previous db and upgrade, change this
+  # to the db volume name you want to upgrade from. e.g. "anchore-enterprise-5.26-db" if upgrading from a 5.26 quickstart deployment.
+  # IMPORTANT: Do not change this volume name - it is used to persist data across minor version upgrades within this major version.
+  anchore-enterprise-db:
+    # Set this to 'true' to use an external volume. In which case, it must be created manually with "docker volume create anchore-db-volume"
+    external: false
+
+services:
+  # The primary API endpoint service
+  api:
+    image: docker.io/anchore/enterprise:v${ANCHORE_VERSION}
+    depends_on:
+      anchore-db:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
+      db-preflight:
+        condition: service_completed_successfully
+    volumes:
+      - ./license.yaml:/license.yaml:ro,z
+      #- ./config-enterprise.yaml:/config/config.yaml:z
+    ports:
+      - "8228:8228"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    environment:
+      - ANCHORE_ENDPOINT_HOSTNAME=api
+      - ANCHORE_DB_HOST=${ANCHORE_DB_HOST}
+      - ANCHORE_DB_PASSWORD=${ANCHORE_DB_PASSWORD}
+      - ANCHORE_ENABLE_METRICS=${ANCHORE_ENABLE_METRICS}
+      - ANCHORE_ADMIN_PASSWORD=${ANCHORE_ADMIN_PASSWORD}
+      - ANCHORE_AUTH_SECRET=${ANCHORE_AUTH_SECRET}
+      # Bare on purpose: only reaches the container when uncommented in .env.
+      # An empty value fails the 32-byte key check at startup.
+      - ANCHORE_DB_ENCRYPTION_KEY_CURRENT
+    command: ["anchore-enterprise-manager", "service", "start", "apiext"]
+  # Catalog is the primary persistence and state manager of the system
+  catalog:
+    image: docker.io/anchore/enterprise:v${ANCHORE_VERSION}
+    depends_on:
+      anchore-db:
+        condition: service_healthy
+      queue:
+        condition: service_healthy
+      db-preflight:
+        condition: service_completed_successfully
+    volumes:
+      - ./license.yaml:/license.yaml:ro,z
+      #- ./config-enterprise.yaml:/config/config.yaml:z
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    expose:
+      - 8228
+    environment:
+      - ANCHORE_ENDPOINT_HOSTNAME=catalog
+      - ANCHORE_DB_HOST=${ANCHORE_DB_HOST}
+      - ANCHORE_DB_PASSWORD=${ANCHORE_DB_PASSWORD}
+      - ANCHORE_ENABLE_METRICS=${ANCHORE_ENABLE_METRICS}
+      - ANCHORE_ADMIN_PASSWORD=${ANCHORE_ADMIN_PASSWORD}
+      - ANCHORE_AUTH_SECRET=${ANCHORE_AUTH_SECRET}
+      # Bare on purpose: only reaches the container when uncommented in .env.
+      # An empty value fails the 32-byte key check at startup.
+      - ANCHORE_DB_ENCRYPTION_KEY_CURRENT
+    command: ["anchore-enterprise-manager", "service", "start", "catalog"]
+  component-catalog:
+    image: docker.io/anchore/enterprise:v${ANCHORE_VERSION}
+    depends_on:
+      anchore-db:
+        condition: service_healthy
+      queue:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
+      db-preflight:
+        condition: service_completed_successfully
+    volumes:
+      - ./license.yaml:/license.yaml:ro,z
+      #- ./config-enterprise.yaml:/config/config.yaml:z
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    expose:
+      - 8228
+    environment:
+      - ANCHORE_ENDPOINT_HOSTNAME=component-catalog
+      - ANCHORE_DB_HOST=${ANCHORE_DB_HOST}
+      - ANCHORE_DB_PASSWORD=${ANCHORE_DB_PASSWORD}
+      - ANCHORE_ENABLE_METRICS=${ANCHORE_ENABLE_METRICS}
+      - ANCHORE_ADMIN_PASSWORD=${ANCHORE_ADMIN_PASSWORD}
+      - ANCHORE_AUTH_SECRET=${ANCHORE_AUTH_SECRET}
+      # Bare on purpose: only reaches the container when uncommented in .env.
+      # An empty value fails the 32-byte key check at startup.
+      - ANCHORE_DB_ENCRYPTION_KEY_CURRENT
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fk https://localhost:$${ANCHORE_SERVICE_PORT}/health || curl -f http://localhost:$${ANCHORE_SERVICE_PORT}/health || exit 1",
+        ]
+      start_period: 20s
+    command:
+      [ "ng-enterprise", "service",
+        "start",
+        "component_catalog"
+      ]
+  queue:
+    image: docker.io/anchore/enterprise:v${ANCHORE_VERSION}
+    depends_on:
+      anchore-db:
+        condition: service_healthy
+      db-preflight:
+        condition: service_completed_successfully
+    volumes:
+      - ./license.yaml:/license.yaml:ro,z
+      #- ./config-enterprise.yaml:/config/config.yaml:z
+    expose:
+      - 8228
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    environment:
+      - ANCHORE_ENDPOINT_HOSTNAME=queue
+      - ANCHORE_DB_HOST=${ANCHORE_DB_HOST}
+      - ANCHORE_DB_PASSWORD=${ANCHORE_DB_PASSWORD}
+      - ANCHORE_ENABLE_METRICS=${ANCHORE_ENABLE_METRICS}
+      - ANCHORE_ADMIN_PASSWORD=${ANCHORE_ADMIN_PASSWORD}
+      - ANCHORE_AUTH_SECRET=${ANCHORE_AUTH_SECRET}
+      # Bare on purpose: only reaches the container when uncommented in .env.
+      # An empty value fails the 32-byte key check at startup.
+      - ANCHORE_DB_ENCRYPTION_KEY_CURRENT
+    command: ["anchore-enterprise-manager", "service", "start", "simplequeue"]
+  policy-engine:
+    image: docker.io/anchore/enterprise:v${ANCHORE_VERSION}
+    depends_on:
+      anchore-db:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
+      data-syncer:
+        condition: service_healthy
+      db-preflight:
+        condition: service_completed_successfully
+    volumes:
+      - ./license.yaml:/license.yaml:ro,z
+      #- ./config-enterprise.yaml:/config/config.yaml:z
+    expose:
+      - 8228
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    environment:
+      - ANCHORE_ENDPOINT_HOSTNAME=policy-engine
+      - ANCHORE_DB_HOST=${ANCHORE_DB_HOST}
+      - ANCHORE_DB_PASSWORD=${ANCHORE_DB_PASSWORD}
+      - ANCHORE_ENABLE_METRICS=${ANCHORE_ENABLE_METRICS}
+      - ANCHORE_ADMIN_PASSWORD=${ANCHORE_ADMIN_PASSWORD}
+      - ANCHORE_AUTH_SECRET=${ANCHORE_AUTH_SECRET}
+      # Bare on purpose: only reaches the container when uncommented in .env.
+      # An empty value fails the 32-byte key check at startup.
+      - ANCHORE_DB_ENCRYPTION_KEY_CURRENT
+      - ANCHORE_POLICY_ENGINE_ENABLE_PACKAGE_DB_LOAD=false
+    command: ["anchore-enterprise-manager", "service", "start", "policy_engine"]
+  analyzer:
+    image: docker.io/anchore/enterprise:v${ANCHORE_VERSION}
+    depends_on:
+      anchore-db:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
+      db-preflight:
+        condition: service_completed_successfully
+    expose:
+      - 8228
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    environment:
+      - ANCHORE_ENDPOINT_HOSTNAME=analyzer
+      - ANCHORE_DB_HOST=${ANCHORE_DB_HOST}
+      - ANCHORE_DB_PASSWORD=${ANCHORE_DB_PASSWORD}
+      - ANCHORE_ENABLE_METRICS=${ANCHORE_ENABLE_METRICS}
+      - ANCHORE_ADMIN_PASSWORD=${ANCHORE_ADMIN_PASSWORD}
+      - ANCHORE_AUTH_SECRET=${ANCHORE_AUTH_SECRET}
+      # Bare on purpose: only reaches the container when uncommented in .env.
+      # An empty value fails the 32-byte key check at startup.
+      - ANCHORE_DB_ENCRYPTION_KEY_CURRENT
+    volumes:
+      - ./license.yaml:/license.yaml:ro,z
+      - /analysis_scratch
+      #- ./config-enterprise.yaml:/config/config.yaml:z
+      # To enable and configure malware and catalogers during centralized analysis/scans please review - https://docs.anchore.com/current/docs/configuration/malware.
+      #- ./analyzer_config.yaml:/anchore_service/analyzer_config.yaml:z
+    command: ["anchore-enterprise-manager", "service", "start", "analyzer"]
+  anchore-db:
+    build:
+      context: .
+      dockerfile: Dockerfile.anchore-db
+    shm_size: 1g
+    volumes:
+      - anchore-enterprise-db:/var/lib/postgresql/data:Z
+    environment:
+      # Same value the services above connect with.
+      - POSTGRES_PASSWORD=${ANCHORE_DB_PASSWORD}
+    expose:
+      - 5432
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 15s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    command: postgres -c shared_preload_libraries=pg_stat_statements,pg_cron -c pg_stat_statements.track=all -c max_connections=2000 -c shared_buffers=128MB -c cron.use_background_workers=on -c work_mem=8MB
+  db-preflight:
+    image: docker.io/anchore/enterprise:v${ANCHORE_VERSION}
+    restart: "no"
+    depends_on:
+      anchore-db:
+        condition: service_healthy
+    volumes:
+      - ./license.yaml:/license.yaml:ro,z
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    environment:
+      - ANCHORE_ENDPOINT_HOSTNAME=db-preflight
+      - ANCHORE_DB_HOST=${ANCHORE_DB_HOST}
+      - ANCHORE_DB_PASSWORD=${ANCHORE_DB_PASSWORD}
+      - ANCHORE_ENABLE_METRICS=${ANCHORE_ENABLE_METRICS}
+      - ANCHORE_AUTH_SECRET=${ANCHORE_AUTH_SECRET}
+      # Bare on purpose: only reaches the container when uncommented in .env.
+      # An empty value fails the 32-byte key check at startup.
+      - ANCHORE_DB_ENCRYPTION_KEY_CURRENT
+    command: ["ng-enterprise", "db", "preflight"]
+  reports:
+    image: docker.io/anchore/enterprise:v${ANCHORE_VERSION}
+    volumes:
+      - ./license.yaml:/license.yaml:ro,z
+      #- ./config-enterprise.yaml:/config/config.yaml:z
+    depends_on:
+      anchore-db:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
+      db-preflight:
+        condition: service_completed_successfully
+    ports:
+      - "8558:8228"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    environment:
+      - ANCHORE_ENDPOINT_HOSTNAME=reports
+      - ANCHORE_DB_HOST=${ANCHORE_DB_HOST}
+      - ANCHORE_DB_PASSWORD=${ANCHORE_DB_PASSWORD}
+      - ANCHORE_ENABLE_METRICS=${ANCHORE_ENABLE_METRICS}
+      - ANCHORE_ADMIN_PASSWORD=${ANCHORE_ADMIN_PASSWORD}
+      - ANCHORE_AUTH_SECRET=${ANCHORE_AUTH_SECRET}
+      # Bare on purpose: only reaches the container when uncommented in .env.
+      # An empty value fails the 32-byte key check at startup.
+      - ANCHORE_DB_ENCRYPTION_KEY_CURRENT
+    command: ["anchore-enterprise-manager", "service", "start", "reports"]
+  reports_worker:
+    image: docker.io/anchore/enterprise:v${ANCHORE_VERSION}
+    volumes:
+      - ./license.yaml:/license.yaml:ro,z
+      #- ./config-enterprise.yaml:/config/config.yaml:z
+    depends_on:
+      anchore-db:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
+      db-preflight:
+        condition: service_completed_successfully
+    expose:
+      - 8228
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    environment:
+      - ANCHORE_ENDPOINT_HOSTNAME=reports_worker
+      - ANCHORE_DB_HOST=${ANCHORE_DB_HOST}
+      - ANCHORE_DB_PASSWORD=${ANCHORE_DB_PASSWORD}
+      - ANCHORE_ENABLE_METRICS=${ANCHORE_ENABLE_METRICS}
+      - ANCHORE_ADMIN_PASSWORD=${ANCHORE_ADMIN_PASSWORD}
+      - ANCHORE_AUTH_SECRET=${ANCHORE_AUTH_SECRET}
+      # Bare on purpose: only reaches the container when uncommented in .env.
+      # An empty value fails the 32-byte key check at startup.
+      - ANCHORE_DB_ENCRYPTION_KEY_CURRENT
+    command:
+      ["anchore-enterprise-manager", "service", "start", "reports_worker"]
+  notifications:
+    image: docker.io/anchore/enterprise:v${ANCHORE_VERSION}
+    volumes:
+      - ./license.yaml:/license.yaml:ro,z
+      #- ./config-enterprise.yaml:/config/config.yaml:z
+    depends_on:
+      anchore-db:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
+      db-preflight:
+        condition: service_completed_successfully
+    ports:
+      - "8668:8228"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    environment:
+      - ANCHORE_ENDPOINT_HOSTNAME=notifications
+      - ANCHORE_DB_HOST=${ANCHORE_DB_HOST}
+      - ANCHORE_DB_PASSWORD=${ANCHORE_DB_PASSWORD}
+      - ANCHORE_ENABLE_METRICS=${ANCHORE_ENABLE_METRICS}
+      - ANCHORE_ADMIN_PASSWORD=${ANCHORE_ADMIN_PASSWORD}
+      - ANCHORE_AUTH_SECRET=${ANCHORE_AUTH_SECRET}
+      # Bare on purpose: only reaches the container when uncommented in .env.
+      # An empty value fails the 32-byte key check at startup.
+      - ANCHORE_DB_ENCRYPTION_KEY_CURRENT
+      - ANCHORE_ENTERPRISE_UI_URL=${ANCHORE_ENTERPRISE_UI_URL}
+    command: ["anchore-enterprise-manager", "service", "start", "notifications"]
+  data-syncer:
+    image: docker.io/anchore/enterprise:v${ANCHORE_VERSION}
+    volumes:
+      - ./license.yaml:/license.yaml:ro,z
+      #- ./config-enterprise.yaml:/config/config.yaml:z
+    depends_on:
+      anchore-db:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
+      db-preflight:
+        condition: service_completed_successfully
+    ports:
+      - "8778:8228"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    environment:
+      - ANCHORE_ENDPOINT_HOSTNAME=data-syncer
+      - ANCHORE_DB_HOST=${ANCHORE_DB_HOST}
+      - ANCHORE_DB_PASSWORD=${ANCHORE_DB_PASSWORD}
+      - ANCHORE_ENABLE_METRICS=${ANCHORE_ENABLE_METRICS}
+      - ANCHORE_ADMIN_PASSWORD=${ANCHORE_ADMIN_PASSWORD}
+      - ANCHORE_AUTH_SECRET=${ANCHORE_AUTH_SECRET}
+      # Bare on purpose: only reaches the container when uncommented in .env.
+      # An empty value fails the 32-byte key check at startup.
+      - ANCHORE_DB_ENCRYPTION_KEY_CURRENT
+      # Set to false in .env for airgapped deployments.
+      - ANCHORE_DATA_SYNC_AUTO_SYNC_ENABLED=${ANCHORE_DATA_SYNC_AUTO_SYNC_ENABLED}
+    command:
+      ["anchore-enterprise-manager", "service", "start", "data_syncer"]
+  ui-redis:
+    image: docker.io/library/redis:${REDIS_VERSION}
+    expose:
+      - 6379
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli PING"]
+  ui:
+    image: docker.io/anchore/enterprise-ui:v${ANCHORE_VERSION}
+    volumes:
+      - ./license.yaml:/license.yaml:ro,z
+      #- ./config-ui.yaml:/config/config-ui.yaml:z
+    depends_on:
+      api:
+        condition: service_healthy
+      ui-redis:
+        condition: service_healthy
+      anchore-db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 100m
+    environment:
+      - ANCHORE_ENTERPRISE_URI=http://api:8228/v2
+      - ANCHORE_REDIS_URI=redis://ui-redis:6379
+      - ANCHORE_APPDB_URI=postgres://postgres:${ANCHORE_DB_PASSWORD}@anchore-db:5432/postgres
+      - ANCHORE_ENABLE_METRICS=${ANCHORE_ENABLE_METRICS}
+
+
+#  # Uncomment this section to add a prometheus instance to gather metrics. This is mostly for quickstart to demonstrate prometheus metrics exported
+#  # You will also need to set ANCHORE_ENABLE_METRICS=true in the .env file.
+#  prometheus:
+#    image: docker.io/prom/prometheus:latest
+#    depends_on:
+#      api:
+#        condition: service_healthy
+#    volumes:
+#      - ./anchore-prometheus.yml:/etc/prometheus/prometheus.yml:z
+#    logging:
+#      driver: "json-file"
+#      options:
+#        max-size: 100m
+#    ports:
+#      - "9090:9090"
+
+#  # Uncomment this section to run a swagger UI service, for inspecting and interacting with the anchore enterprise API via a browser (http://localhost:8080 by default, change if needed in both sections below)
+#  swagger-ui-nginx:
+#    image: docker.io/nginx:latest
+#    depends_on:
+#      api:
+#        condition: service_healthy
+#      swagger-ui:
+#        condition: service_started
+#    ports:
+#      - "8080:8080"
+#    volumes:
+#      - ./anchore-swaggerui-nginx.conf:/etc/nginx/nginx.conf:z
+#    logging:
+#      driver: "json-file"
+#      options:
+#        max-size: 100m
+
+#  swagger-ui:
+#    image: docker.io/swaggerapi/swagger-ui
+#    depends_on:
+#      api:
+#        condition: service_healthy
+#    environment:
+#      - URL=http://localhost:8080/v2/openapi.json
+#    logging:
+#      driver: "json-file"
+#      options:
+#        max-size: 100m

@@ -1,0 +1,52 @@
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: anchore-db-credentials
+  namespace: anchore
+type: kubernetes.io/basic-auth
+stringData:
+  username: anchore
+  password: "anchore-postgres,123"
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: anchore-db
+  namespace: anchore
+spec:
+  instances: 1
+  description: "PostgreSQL 17 with pg_cron for Anchore Enterprise, managed by CloudNativePG"
+  # PostgreSQL 17 with the pg_cron extension built in. No public CloudNativePG
+  # image ships pg_cron, so this Anchore-built image is required. It is private
+  # and reuses the same pull secret as the Anchore Enterprise images -- so that
+  # secret must exist before this manifest is applied. Note: amd64 only.
+  imageName: docker.io/anchore/postgres-cron:17
+  imagePullSecrets:
+    - name: anchore-enterprise-pullcreds
+  postgresUID: 999
+  postgresGID: 999
+  bootstrap:
+    initdb:
+      database: anchore
+      owner: anchore
+      secret:
+        name: anchore-db-credentials
+      postInitSQL:
+        - ALTER ROLE anchore WITH SUPERUSER;
+      postInitApplicationSQL:
+        - CREATE EXTENSION pg_cron;
+        - GRANT USAGE ON SCHEMA cron TO anchore;
+        - GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA cron TO anchore;
+        - GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA cron TO anchore;
+        - ALTER ROLE anchore WITH NOSUPERUSER;
+  postgresql:
+    shared_preload_libraries:
+      - pg_cron
+    parameters:
+      cron.database_name: anchore
+      cron.use_background_workers: "on"
+      max_worker_processes: "20"
+      max_connections: "2000"
+  storage:
+    size: 10Gi
