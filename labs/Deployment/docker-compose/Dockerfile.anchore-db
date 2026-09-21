@@ -1,0 +1,6 @@
+FROM docker.io/library/postgres:17
+RUN apt-get update -qq \
+    && apt-get install -y -qq --no-install-recommends postgresql-17-cron \
+    && rm -rf /var/lib/apt/lists/*
+# Create the pg_cron extension on first database initialization
+RUN echo "CREATE EXTENSION IF NOT EXISTS pg_cron;" > /docker-entrypoint-initdb.d/create-pg-cron.sql
